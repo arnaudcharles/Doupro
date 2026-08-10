@@ -1,0 +1,204 @@
+// Package oidc wraps github.com/coreos/go-oidc and golang.org/x/oauth2 into
+// the small surface internal/api needs for browser SSO login (see
+// docs/settings.md, Security → OIDC). This is a login-time concern only —
+// CLI/API access continues to use API keys (internal/store/auth.go),
+// unaffected by anything in this package.
+package oidc
+
+import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
+	"net/http"
+	"os"
+
+	"github.com/coreos/go-oidc/v3/oidc"
+	"golang.org/x/oauth2"
+
+	"github.com/arnaudcharles/doupro/internal/config"
+)
+
+// Claims is the subset of ID-token claims DoUpRo acts on. Subject is the
+// only stable identifier — Username is best-effort display data (falls
+// back from preferred_username to email to Subject) and Groups backs the
+// optional allowlist gate (see GroupAllowed).
+type Claims struct {
+	Subject  string
+	Username string
+	Groups   []string
+}
+
+// Provider holds the OAuth2/OIDC client built from one successful discovery
+// call at startup (see New) — Exchange/AuthCodeURL never re-fetch discovery
+// per request.
+type Provider struct {
+	oauth2Config  oauth2.Config
+	verifier      *oidc.IDTokenVerifier
+	allowedGroups []string
+	httpClient    *http.Client // nil unless DOUPRO_OIDC_EXTRA_CA_CERT_PATH is set
+}
+
+// New builds a Provider from cfg by running OIDC discovery against
+// cfg.OIDCIssuerURL. Returns (nil, nil) — not an error — when
+// cfg.OIDCIssuerURL is unset, since OIDC is an opt-in feature: callers
+// should treat a nil Provider as "SSO disabled" and skip registering its
+// routes entirely.
+func New(ctx context.Context, cfg config.Config) (*Provider, error) {
+	if cfg.OIDCIssuerURL == "" {
+		return nil, nil
+	}
+	if cfg.OIDCClientID == "" || cfg.OIDCClientSecret == "" || cfg.OIDCRedirectURL == "" {
+		return nil, fmt.Errorf("DOUPRO_OIDC_ISSUER_URL is set but DOUPRO_OIDC_CLIENT_ID/CLIENT_SECRET/REDIRECT_URL are not all set")
+	}
+
+	httpClient, err := buildHTTPClient(cfg.OIDCExtraCACert)
+	if err != nil {
+		return nil, err
+	}
+	ctx = clientContext(ctx, httpClient)
+
+	provider, err := oidc.NewProvider(ctx, cfg.OIDCIssuerURL)
+	if err != nil {
+		return nil, fmt.Errorf("oidc discovery against %s: %w", cfg.OIDCIssuerURL, err)
+	}
+
+	// AuthStyle is forced to client_secret_post (the OIDC-conformant
+	// default Authentik and most providers expect) rather than left at
+	// oauth2's default AuthStyleAutoDetect. Auto-detect probes with
+	// AuthStyleInHeader first and, on any failure, retries with
+	// AuthStyleInParams — but an authorization code is single-use, so a
+	// first attempt that fails for *any* reason (including just being the
+	// "wrong" style) burns the code, guaranteeing the retry also fails
+	// with a confusing invalid_grant. Found by hitting exactly this
+	// against a real Authentik instance: two token POSTs per login, both
+	// 400.
+	endpoint := provider.Endpoint()
+	endpoint.AuthStyle = oauth2.AuthStyleInParams
+
+	return &Provider{
+		oauth2Config: oauth2.Config{
+			ClientID:     cfg.OIDCClientID,
+			ClientSecret: cfg.OIDCClientSecret,
+			RedirectURL:  cfg.OIDCRedirectURL,
+			Endpoint:     endpoint,
+			Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "groups"},
+		},
+		verifier:      provider.Verifier(&oidc.Config{ClientID: cfg.OIDCClientID}),
+		allowedGroups: cfg.OIDCAllowedGroups,
+		httpClient:    httpClient,
+	}, nil
+}
+
+// buildHTTPClient returns nil (use net/http's default transport and system
+// cert pool) when caCertPath is empty. When set, it returns a client whose
+// RootCAs is the system pool *plus* that certificate — additive trust for
+// an internal/self-signed IdP (a common on-prem/homelab Authentik setup),
+// never a replacement for the system pool and never a way to skip
+// verification entirely.
+func buildHTTPClient(caCertPath string) (*http.Client, error) {
+	if caCertPath == "" {
+		return nil, nil
+	}
+
+	pem, err := os.ReadFile(caCertPath)
+	if err != nil {
+		return nil, fmt.Errorf("read DOUPRO_OIDC_EXTRA_CA_CERT_PATH (%s): %w", caCertPath, err)
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		pool = x509.NewCertPool()
+	}
+	if ok := pool.AppendCertsFromPEM(pem); !ok {
+		return nil, fmt.Errorf("no valid PEM certificate found in DOUPRO_OIDC_EXTRA_CA_CERT_PATH (%s)", caCertPath)
+	}
+
+	return &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}}}, nil
+}
+
+// clientContext attaches client to ctx the same way oidc.ClientContext does
+// (they share the same context key, oauth2.HTTPClient — see go-oidc's
+// getClient), so every subsequent discovery/token/JWKS call started from
+// this context uses it. A nil client is a no-op — callers keep the
+// standard library default.
+func clientContext(ctx context.Context, client *http.Client) context.Context {
+	if client == nil {
+		return ctx
+	}
+	return oidc.ClientContext(ctx, client)
+}
+
+// AuthCodeURL builds the Authentik authorization-endpoint redirect URL.
+// state and nonce must be generated by the caller and remembered (in the
+// state cookie — see internal/api/auth_oidc.go) so the callback can check
+// them; verifier is the raw PKCE code verifier the caller also keeps in
+// that same cookie — S256ChallengeOption derives the S256 challenge from
+// it internally, so callers must pass the verifier itself here, never an
+// already-hashed challenge (doing so double-hashes it and Authentik/any
+// spec-conformant IdP rejects the mismatch at token exchange).
+func (p *Provider) AuthCodeURL(state, nonce, verifier string) string {
+	return p.oauth2Config.AuthCodeURL(state,
+		oidc.Nonce(nonce),
+		oauth2.S256ChallengeOption(verifier),
+	)
+}
+
+// Exchange trades an authorization code for tokens, verifies the ID token
+// (issuer, audience, signature, expiry — all handled by the verifier) and
+// its nonce against wantNonce, and returns the decoded claims. codeVerifier
+// is the PKCE verifier matching the challenge passed to AuthCodeURL.
+func (p *Provider) Exchange(ctx context.Context, code, codeVerifier, wantNonce string) (Claims, error) {
+	ctx = clientContext(ctx, p.httpClient)
+	token, err := p.oauth2Config.Exchange(ctx, code, oauth2.VerifierOption(codeVerifier))
+	if err != nil {
+		return Claims{}, fmt.Errorf("exchange code: %w", err)
+	}
+
+	rawIDToken, ok := token.Extra("id_token").(string)
+	if !ok {
+		return Claims{}, fmt.Errorf("token response had no id_token")
+	}
+	idToken, err := p.verifier.Verify(ctx, rawIDToken)
+	if err != nil {
+		return Claims{}, fmt.Errorf("verify id_token: %w", err)
+	}
+	if idToken.Nonce != wantNonce {
+		return Claims{}, fmt.Errorf("id_token nonce mismatch")
+	}
+
+	var raw struct {
+		PreferredUsername string   `json:"preferred_username"`
+		Email             string   `json:"email"`
+		Groups            []string `json:"groups"`
+	}
+	if err := idToken.Claims(&raw); err != nil {
+		return Claims{}, fmt.Errorf("decode id_token claims: %w", err)
+	}
+
+	username := raw.PreferredUsername
+	if username == "" {
+		username = raw.Email
+	}
+	if username == "" {
+		username = idToken.Subject
+	}
+
+	return Claims{Subject: idToken.Subject, Username: username, Groups: raw.Groups}, nil
+}
+
+// GroupAllowed reports whether claims should be allowed to log in given the
+// configured allowlist. An empty allowlist means unrestricted — the
+// default, matching today's "any authenticated identity" behavior.
+func (p *Provider) GroupAllowed(claims Claims) bool {
+	if len(p.allowedGroups) == 0 {
+		return true
+	}
+	for _, want := range p.allowedGroups {
+		for _, have := range claims.Groups {
+			if want == have {
+				return true
+			}
+		}
+	}
+	return false
+}

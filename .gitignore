@@ -1,0 +1,44 @@
+# Go
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+vendor/
+
+# Local data & runtime
+/data/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+doupro.sock
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Frontend build artifacts
+/web/dist/
+/web/node_modules/
+*.min.css
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Logs
+*.log
+
+# AI agent context (CLAUDE.md, AGENTS.md, .claude/, PROJECT.md) and the
+# engineering docs (docs/) — kept privately in
+# gitlab.com/arnaudcharles/dev/github-doupro, symlinked in locally at
+# these same paths. Never tracked in this (public) repo.
+/CLAUDE.md
+/AGENTS.md
+/.claude/
+/PROJECT.md
+/docs

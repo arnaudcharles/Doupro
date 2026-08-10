@@ -1,0 +1,51 @@
+name: Release
+
+# Fulfils the promise in CONTRIBUTING.md's "Release process": pushing a
+# vX.Y.Z tag builds and publishes a multi-arch (linux/amd64, linux/arm64)
+# image as both sharlihe/doupro:X.Y.Z and sharlihe/doupro:latest.
+#
+# Requires two repository secrets before this can actually push anything:
+#   DOCKERHUB_USERNAME — the Docker Hub account/org that owns sharlihe/doupro
+#   DOCKERHUB_TOKEN     — a Docker Hub access token scoped to that repo
+# (Settings -> Secrets and variables -> Actions). Until both are set, this
+# workflow will run and fail at the login step rather than push nothing
+# silently — intentional, so a missing secret is loud, not a quiet no-op.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    name: Build and push multi-arch image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Derive version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+          tags: |
+            sharlihe/doupro:${{ steps.version.outputs.version }}
+            sharlihe/doupro:latest

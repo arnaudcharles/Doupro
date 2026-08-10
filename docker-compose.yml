@@ -1,0 +1,53 @@
+services:
+  doupro:
+    image: sharlihe/doupro:latest
+    container_name: doupro
+    restart: unless-stopped
+    labels:
+      # Stable identity for safe self-update; names and Docker IDs may change.
+      doupro.instance: "true"
+
+    ports:
+      - "8080:8080"
+
+    volumes:
+      # Grants DoUpRo control over containers on this host — equivalent to
+      # root access. Read the security note in README.md / SECURITY.md
+      # before deploying, and consider a docker-socket-proxy for hardening.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - doupro_data:/data
+
+    environment:
+      DOUPRO_BIND_ADDR: ":8080"
+      DOUPRO_DATA_DIR: "/data"
+      DOUPRO_DB_PATH: "/data/doupro.db"
+      DOUPRO_DOCKER_SOCKET: "/var/run/docker.sock"
+      DOUPRO_LOG_LEVEL: "${DOUPRO_LOG_LEVEL:-info}"
+      # Leave both unset (the default) for the zero-config admin/admin
+      # account — DoUpRo forces a password change on first login. Set both
+      # in .env for a real password from the start; see .env.example.
+      DOUPRO_ADMIN_USER: "${DOUPRO_ADMIN_USER:-}"
+      DOUPRO_ADMIN_PASSWORD: "${DOUPRO_ADMIN_PASSWORD:-}"
+      # Only true if a TLS-terminating reverse proxy sits in front of this
+      # container and strips client-supplied X-Forwarded-Proto — see
+      # .env.example.
+      DOUPRO_TRUST_PROXY_HEADERS: "${DOUPRO_TRUST_PROXY_HEADERS:-false}"
+
+    # Lets the non-root container user read/write the Docker socket without
+    # running the whole container as root. Find your host's docker group id
+    # with: getent group docker | cut -d: -f3
+    group_add:
+      - "${DOCKER_GID:-999}"
+
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/doupro", "healthcheck"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  doupro_data:

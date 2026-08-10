@@ -1,0 +1,725 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "DoUpRo API",
+    "description": "Docker Update Rollback — watch, update, schedule, and roll back Docker containers. Every feature in the web UI or CLI is backed by this API first. See docs/api.md in the repository for narrative documentation.",
+    "version": "1.0.0",
+    "license": { "name": "MIT" }
+  },
+  "servers": [{ "url": "/", "description": "This DoUpRo instance" }],
+  "security": [{ "sessionCookie": [] }, { "apiKey": [] }],
+  "tags": [
+    { "name": "auth", "description": "Session login/logout" },
+    { "name": "containers", "description": "Tracked containers, updates, rollbacks" },
+    { "name": "schedules", "description": "One-off, cron, and relative update schedules" },
+    { "name": "notifications", "description": "Notification delivery log and channel configuration" },
+    { "name": "settings", "description": "General, exclusions, notifications, and API key settings" },
+    { "name": "stats", "description": "Current-state and recent-event summary" },
+    { "name": "logs", "description": "Structured event log" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["auth"],
+        "summary": "Liveness probe",
+        "description": "Unauthenticated — used by the Docker HEALTHCHECK and orchestrator probes.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Log in",
+        "description": "Sets a session cookie on success. Accepts JSON or form-encoded body.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } } },
+          "401": { "description": "Invalid credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Log out",
+        "description": "Clears the session cookie.",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/auth/password": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Change the current session's password",
+        "description": "Session-cookie auth only, not an API key — used both for the forced first-login password change and the voluntary Settings change-password action. Requires the current password even on the forced flow. Killing every other session for the account on success, keeping the caller's own session alive.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["current_password", "new_password"], "properties": { "current_password": { "type": "string" }, "new_password": { "type": "string", "minLength": 8 } } } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } } },
+          "400": { "description": "New password too short", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Current password is incorrect", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Called with an API key instead of a session cookie", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/containers": {
+      "get": {
+        "tags": ["containers"],
+        "summary": "List tracked containers",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Container" } } } }
+          }
+        }
+      }
+    },
+    "/api/v1/containers/{name}": {
+      "get": {
+        "tags": ["containers"],
+        "summary": "Get one container",
+        "description": "Full detail for one tracked container, the same shape as one entry from the list endpoint.",
+        "parameters": [{ "$ref": "#/components/parameters/ContainerName" }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Container" } } } },
+          "404": { "description": "Container not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/containers/{name}/check": {
+      "post": {
+        "tags": ["containers"],
+        "summary": "Force an immediate registry check",
+        "description": "Runs the same per-container registry digest/version check the periodic cycle uses, outside its schedule. checked is false (not an error) when the container has no recorded local digest to compare against.",
+        "parameters": [{ "$ref": "#/components/parameters/ContainerName" }],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "checked": { "type": "boolean" }, "update_available": { "type": "boolean" } } } } }
+          },
+          "404": { "description": "Container not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "502": { "description": "Registry check failed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/containers/{name}/update": {
+      "get": {
+        "tags": ["containers"],
+        "summary": "Preview an update (dry run)",
+        "description": "Resolves exactly what POST on this path would target at the given semver scope, using the same durable candidate lookup, without pulling an image or touching Docker.",
+        "parameters": [
+          { "$ref": "#/components/parameters/ContainerName" },
+          { "name": "semver", "in": "query", "schema": { "type": "string", "enum": ["patch", "minor", "major"], "default": "major" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "properties": {
+                "current_image": { "type": "string" },
+                "current_version": { "type": "string" },
+                "target_image": { "type": "string" },
+                "target_version": { "type": "string" },
+                "update_kind": { "type": "string", "enum": ["version", "rebuild"] },
+                "semver_scope": { "type": "string" },
+                "update_available": { "type": "boolean" }
+              }
+            } } }
+          },
+          "404": { "description": "Container not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "post": {
+        "tags": ["containers"],
+        "summary": "Update a container",
+        "description": "Pulls the container's current image reference again and recreates the container, keeping the prior image on record for rollback. When the target is the running DoUpRo instance, returns 202 and delegates a guarded self-update to a temporary recovery helper.",
+        "parameters": [
+          { "$ref": "#/components/parameters/ContainerName" },
+          { "name": "semver", "in": "query", "schema": { "type": "string", "enum": ["patch", "minor", "major"], "default": "major" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } } },
+          "202": { "description": "DoUpRo self-update accepted; daemon is restarting", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } } },
+          "404": { "description": "Container not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "409": { "description": "Update failed, another operation is active, or self-update has a schedule within its five-minute safety horizon", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/containers/update-all": {
+      "post": {
+        "tags": ["containers"],
+        "summary": "Update every container with an update available",
+        "description": "Queues an Update for every container that currently has update_available=true, skipping excluded containers and DoUpRo's own container (self-update has its own safety gates). Returns immediately; updates run one at a time in the background, continuing past a per-container failure or lock contention.",
+        "parameters": [
+          { "name": "stack", "in": "query", "description": "Limit to one stack instead of every tracked container.", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "202": { "description": "Accepted — queued count returned, updates run in the background", "content": { "application/json": { "schema": { "type": "object", "properties": { "queued": { "type": "integer" } } } } } }
+        }
+      }
+    },
+    "/api/v1/containers/{name}/rollback": {
+      "post": {
+        "tags": ["containers"],
+        "summary": "Roll back a container",
+        "description": "Recreates the container from its recorded previous image. Available any time a previous version is on record.",
+        "parameters": [{ "$ref": "#/components/parameters/ContainerName" }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } } },
+          "404": { "description": "Container not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "409": { "description": "Rollback failed or another operation is already in progress", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/schedules": {
+      "get": {
+        "tags": ["schedules"],
+        "summary": "List schedules",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Schedule" } } } }
+          }
+        }
+      },
+      "post": {
+        "tags": ["schedules"],
+        "summary": "Create a schedule",
+        "description": "Creates a one-off, cron, or relative schedule. A one-off schedule (`type: once`) targeting a stack fans out into one schedule per container currently in that stack, each pinned to that container's current image — the response is always an array, a single-item array for `cron`/`relative` which never fan out.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ScheduleRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Schedule" } } } }
+          },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "Container or stack not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/schedules/{id}": {
+      "patch": {
+        "tags": ["schedules"],
+        "summary": "Enable or disable a schedule",
+        "description": "Only `enabled` is supported — toggling a schedule on/off without recreating it. A completed once-off schedule cannot be re-enabled.",
+        "parameters": [{ "$ref": "#/components/parameters/ScheduleID" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["enabled"], "properties": { "enabled": { "type": "boolean" } } } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } } },
+          "404": { "description": "Schedule not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "409": { "description": "A completed once-off schedule cannot be enabled or disabled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "delete": {
+        "tags": ["schedules"],
+        "summary": "Cancel a schedule",
+        "parameters": [{ "$ref": "#/components/parameters/ScheduleID" }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } } },
+          "404": { "description": "Schedule not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/notifications": {
+      "get": {
+        "tags": ["notifications"],
+        "summary": "List recent notification deliveries",
+        "description": "The delivery log — every attempt, not just successes. Returns the 100 most recent.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Notification" } } } }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/queue": {
+      "get": {
+        "tags": ["notifications"],
+        "summary": "List durable notification jobs",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/NotificationJob" } } } } }
+        }
+      }
+    },
+    "/api/v1/notifications/queue/{id}/retry": {
+      "post": {
+        "tags": ["notifications"],
+        "summary": "Retry a dead-letter notification",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
+        "responses": {
+          "202": { "description": "Queued", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } } },
+          "409": { "description": "Job is not in dead-letter", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/settings/general": {
+      "get": {
+        "tags": ["settings"],
+        "summary": "Get general settings",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GeneralSettings" } } } }
+        }
+      },
+      "patch": {
+        "tags": ["settings"],
+        "summary": "Update general settings",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GeneralSettings" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GeneralSettings" } } } },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/settings/registries": {
+      "get": { "tags": ["settings"], "summary": "List registry connectivity without secrets", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/RegistryConfig" } } } } } } },
+      "patch": { "tags": ["settings"], "summary": "Replace registry connectivity configuration", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/RegistryConfig" } } } } }, "responses": { "200": { "description": "OK" }, "400": { "description": "Invalid registry configuration" } } }
+    },
+    "/api/v1/settings/registries/test": {
+      "post": { "tags": ["settings"], "summary": "Test registry connectivity without saving or pulling layers", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegistryConfig" } } } }, "responses": { "200": { "description": "Connection succeeded" }, "400": { "description": "Invalid registry configuration" }, "502": { "description": "Connection failed" } } }
+    },
+    "/api/v1/settings/exclusions": {
+      "get": {
+        "tags": ["settings"],
+        "summary": "Get excluded containers/stacks",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Exclusions" } } } }
+        }
+      },
+      "patch": {
+        "tags": ["settings"],
+        "summary": "Replace excluded containers/stacks",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Exclusions" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Exclusions" } } } }
+        }
+      }
+    },
+    "/api/v1/settings/security/api-keys": {
+      "get": {
+        "tags": ["settings"],
+        "summary": "List API keys",
+        "description": "The raw key is never returned here — only at creation time.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/APIKey" } } } }
+          }
+        }
+      },
+      "post": {
+        "tags": ["settings"],
+        "summary": "Create an API key",
+        "description": "Auth for external tools/scripts/cron hitting the REST API without a browser session (remote CLI, home-automation, monitoring). The raw key is only ever returned in this response — it is stored hashed and cannot be recovered afterward.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["name", "access"], "properties": { "name": { "type": "string" }, "access": { "$ref": "#/components/schemas/Access" } } } } }
+        },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/APIKey" } } } },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/settings/security/api-keys/{id}": {
+      "delete": {
+        "tags": ["settings"],
+        "summary": "Revoke an API key",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" }, "description": "API key ID" }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/users": {
+      "get": {
+        "tags": ["users"], "summary": "List users and RBAC assignments",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/User" } } } } } }
+      },
+      "post": {
+        "tags": ["users"], "summary": "Create a local user",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["username", "password", "access"], "properties": { "username": { "type": "string" }, "password": { "type": "string", "format": "password", "minLength": 8 }, "access": { "$ref": "#/components/schemas/Access" } } } } } },
+        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } }, "409": { "description": "Username already exists", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } } }
+      }
+    },
+    "/api/v1/users/{id}": {
+      "patch": {
+        "tags": ["users"], "summary": "Replace a user's RBAC assignment",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Access" } } } },
+        "responses": { "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } }, "409": { "description": "Last administrator cannot be demoted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } } }
+      },
+      "delete": {
+        "tags": ["users"], "summary": "Delete a user and their sessions",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
+        "responses": { "200": { "description": "Deleted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } } }, "409": { "description": "Cannot delete self or the last administrator", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } } }
+      }
+    },
+    "/api/v1/settings/notifications": {
+      "get": {
+        "tags": ["settings", "notifications"],
+        "summary": "Get configured notification channels",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Channel" } } } }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["settings", "notifications"],
+        "summary": "Replace configured notification channels",
+        "description": "Replaces the channel list wholesale. Each channel URL follows the shoutrrr scheme (Telegram, Discord, Slack, ntfy, Gotify, generic webhook, ...).",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Channel" } } } }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Channel" } } } }
+          },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/settings/notifications/test": {
+      "post": {
+        "tags": ["settings", "notifications"],
+        "summary": "Send a test notification",
+        "description": "Sends a one-off test message to a shoutrrr URL without persisting it as a configured channel.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["url"], "properties": { "url": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } } },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "502": { "description": "Delivery failed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/stats": {
+      "get": {
+        "tags": ["stats"],
+        "summary": "Get the stats summary",
+        "description": "A current-state + recent-event snapshot (last 500 events), not a historical time series. See /metrics (Prometheus) for real history.",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatsSummary" } } } }
+        }
+      }
+    },
+    "/api/v1/logs": {
+      "get": {
+        "tags": ["logs"],
+        "summary": "List structured log events",
+        "parameters": [
+          { "name": "event", "in": "query", "schema": { "type": "string" }, "description": "Filter by event type" },
+          { "name": "container", "in": "query", "schema": { "type": "string" }, "description": "Filter by container name" },
+          { "name": "level", "in": "query", "schema": { "type": "string" }, "description": "Filter by log level" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" }, "description": "Max rows to return" }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/LogEvent" } } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": { "type": "apiKey", "in": "cookie", "name": "doupro_session", "description": "Set by POST /api/v1/auth/login — used by the web UI." },
+      "apiKey": { "type": "http", "scheme": "bearer", "description": "`Authorization: Bearer <api-key>` — used by the remote CLI and external integrations. Create one at POST /api/v1/settings/security/api-keys." }
+    },
+    "parameters": {
+      "ContainerName": {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "Container name, not Docker's container ID (which changes on every recreate)."
+      },
+      "ScheduleID": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "integer", "format": "int64" }
+      }
+    },
+    "schemas": {
+      "StatusResponse": {
+        "type": "object",
+        "properties": { "status": { "type": "string", "example": "ok" } }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "string", "example": "invalid_request" },
+              "message": { "type": "string", "example": "run_at must be in the future" }
+            }
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["username", "password"],
+        "properties": {
+          "username": { "type": "string" },
+          "password": { "type": "string", "format": "password" }
+        }
+      },
+      "Container": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "stack": { "type": "string" },
+          "state": { "type": "string", "example": "running" },
+          "status": { "type": "string" },
+          "current_image": { "type": "string" },
+          "previous_image": { "type": "string" },
+          "current_version": { "type": "string", "description": "Exact publisher version when resolved; immutable digest fallback otherwise." },
+          "current_tag": { "type": "string", "description": "Source registry tag, including floating aliases such as latest." },
+          "version_source": { "type": "string", "enum": ["version", "tag", "digest", "none"] },
+          "available_version": { "type": "string" },
+          "update_kind": { "type": "string", "enum": ["version", "rebuild"], "description": "Kind of pending image change; omitted when no update is pending." },
+          "update_available": { "type": "boolean" },
+          "excluded": { "type": "boolean" },
+          "operation": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "kind": { "type": "string", "enum": ["update", "rollback"] },
+              "started_at": { "type": "string", "format": "date-time" }
+            }
+          },
+          "rollback_watch": { "$ref": "#/components/schemas/RollbackWatch" },
+          "last_checked_at": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "ScheduleRequest": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "enum": ["once", "cron", "relative"] },
+          "container": { "type": "string", "description": "Target a single container. Required for once/cron/relative unless stack is set." },
+          "stack": { "type": "string", "description": "Target every container in this stack. For type=once, fans out into one schedule per container." },
+          "run_at": { "type": "string", "format": "date-time", "description": "Required for type=once. Must be in the future." },
+          "cron": { "type": "string", "description": "Required for type=cron, e.g. \"0 8 * * MON\"." },
+          "policy": { "type": "string", "enum": ["immediate", "delayed"], "description": "Required for type=relative." },
+          "after": { "type": "string", "description": "Delay for policy=delayed, e.g. \"24h\"." },
+          "semver": { "type": "string", "enum": ["patch", "minor", "major"], "default": "major", "description": "Maximum compatible stable semver change." },
+          "notify": { "type": "boolean", "default": true }
+        }
+      },
+      "Schedule": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "type": { "type": "string", "enum": ["once", "cron", "relative"] },
+          "container": { "type": "string" },
+          "stack": { "type": "string" },
+          "run_at": { "type": "string", "format": "date-time", "nullable": true },
+          "cron": { "type": "string" },
+          "policy": { "type": "string" },
+          "after": { "type": "string" },
+          "semver": { "type": "string", "enum": ["patch", "minor", "major"] },
+          "pinned_image": { "type": "string" },
+          "notify": { "type": "boolean" },
+          "enabled": { "type": "boolean" },
+          "last_run_at": { "type": "string", "format": "date-time", "nullable": true },
+          "next_run_at": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "Notification": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "event": { "type": "string" },
+          "target": { "type": "string" },
+          "channel": { "type": "string" },
+          "status": { "type": "string" },
+          "error": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      },
+      "NotificationJob": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "event": { "type": "string" },
+          "target": { "type": "string" },
+          "stack": { "type": "string" },
+          "channel": { "type": "string" },
+          "message": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending", "processing", "sent", "dead_letter"] },
+          "attempts": { "type": "integer" },
+          "max_attempts": { "type": "integer" },
+          "next_attempt_at": { "type": "string", "format": "date-time" },
+          "last_error": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "sent_at": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "Channel": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "url": { "type": "string", "writeOnly": true, "description": "Credential-bearing shoutrrr service URL; omitted from responses" },
+          "configured": { "type": "boolean", "readOnly": true },
+          "provider": { "type": "string", "readOnly": true }
+        }
+      },
+      "RegistryConfig": {
+        "type": "object",
+        "required": ["host"],
+        "properties": {
+          "host": { "type": "string", "description": "registry host[:port] without a scheme" },
+          "username": { "type": "string" },
+          "password": { "type": "string", "writeOnly": true },
+          "auth_host": { "type": "string", "description": "Explicitly trusted bearer-token service host when different from the registry" },
+          "proxy_url": { "type": "string", "writeOnly": true },
+          "ca_pem": { "type": "string", "writeOnly": true },
+          "credentials_configured": { "type": "boolean", "readOnly": true },
+          "proxy_configured": { "type": "boolean", "readOnly": true },
+          "ca_configured": { "type": "boolean", "readOnly": true },
+          "ca_sha256": { "type": "string", "readOnly": true }
+        }
+      },
+      "GeneralSettings": {
+        "type": "object",
+        "properties": {
+          "check_interval_minutes": { "type": "integer", "minimum": 5 },
+          "crash_loop_threshold": { "type": "integer", "minimum": 1, "maximum": 20, "default": 3 },
+          "crash_loop_window_minutes": { "type": "integer", "minimum": 1, "maximum": 1440, "default": 10 },
+          "logs_page_size": { "type": "integer", "minimum": 50, "maximum": 1000, "default": 300 }
+        }
+      },
+      "RollbackWatch": {
+        "type": "object",
+        "properties": {
+          "container_name": { "type": "string" },
+          "container_id": { "type": "string" },
+          "update_applied_at": { "type": "string", "format": "date-time" },
+          "window_expires_at": { "type": "string", "format": "date-time" },
+          "crash_count": { "type": "integer" },
+          "threshold": { "type": "integer" },
+          "last_crash_at": { "type": "string", "format": "date-time", "nullable": true },
+          "triggered_at": { "type": "string", "format": "date-time", "nullable": true },
+          "status": { "type": "string", "enum": ["active", "triggered"] }
+        }
+      },
+      "Exclusions": {
+        "type": "object",
+        "properties": {
+          "containers": { "type": "array", "items": { "type": "string" } },
+          "stacks": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "APIKey": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "name": { "type": "string" },
+          "key_prefix": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "last_used_at": { "type": "string", "format": "date-time", "nullable": true },
+          "key": { "type": "string", "description": "Only populated in the response to the create call — never recoverable afterward." },
+          "access": { "$ref": "#/components/schemas/Access" }
+        }
+      },
+      "Access": {
+        "type": "object",
+        "required": ["role"],
+        "properties": {
+          "role": { "type": "string", "enum": ["admin", "write", "read"] },
+          "view_logs": { "type": "boolean", "default": false },
+          "manage_schedules": { "type": "boolean", "default": false },
+          "manage_notifications": { "type": "boolean", "default": false },
+          "view_stats": { "type": "boolean", "default": false },
+          "protected": { "type": "boolean", "readOnly": true, "description": "True only for the immutable bootstrap administrator." }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "username": { "type": "string" },
+          "auth_provider": { "type": "string", "enum": ["local", "oidc"] },
+          "created_at": { "type": "string", "format": "date-time" },
+          "access": { "$ref": "#/components/schemas/Access" }
+        }
+      },
+      "StatsSummary": {
+        "type": "object",
+        "properties": {
+          "containers_total": { "type": "integer" },
+          "containers_running": { "type": "integer" },
+          "updates_available": { "type": "integer" },
+          "updates_succeeded": { "type": "integer" },
+          "updates_failed": { "type": "integer" },
+          "rollbacks_auto": { "type": "integer" },
+          "rollbacks_manual": { "type": "integer" },
+          "notifications_sent": { "type": "integer" },
+          "notifications_failed": { "type": "integer" },
+          "schedules_active": { "type": "integer" },
+          "containers_by_stack": { "type": "object", "additionalProperties": { "type": "integer" } }
+        }
+      },
+      "LogEvent": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "level": { "type": "string" },
+          "event": { "type": "string" },
+          "container": { "type": "string" },
+          "stack": { "type": "string" },
+          "from_version": { "type": "string" },
+          "to_version": { "type": "string" },
+          "actor": { "type": "string" },
+          "actor_id": { "type": "string" },
+          "request_id": { "type": "string" },
+          "message": { "type": "string" },
+          "metadata": { "type": "object", "additionalProperties": true }
+        }
+      }
+    }
+  }
+}

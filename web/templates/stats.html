@@ -1,0 +1,64 @@
+{{define "stats-content"}}
+<div class="p-6 max-w-5xl mx-auto">
+  <div class="flex items-baseline justify-between mb-6">
+    <h1 class="text-xl font-semibold">Stats</h1>
+    <a href="/metrics" class="text-sm text-badge-update hover:underline">/metrics (Prometheus)</a>
+  </div>
+
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+    <div class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+      <div class="text-2xl font-semibold text-badge-available">{{.Stats.ContainersTotal}}</div>
+      <div class="text-xs text-gray-500 mt-1">containers tracked</div>
+    </div>
+    <div class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+      <div class="text-2xl font-semibold text-state-running">{{.Stats.ContainersRunning}}</div>
+      <div class="text-xs text-gray-500 mt-1">running</div>
+    </div>
+    <div class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+      <div class="text-2xl font-semibold text-badge-update">{{.Stats.UpdatesAvailable}}</div>
+      <div class="text-xs text-gray-500 mt-1">updates available</div>
+    </div>
+    <div class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+      <div class="text-2xl font-semibold text-badge-scheduled">{{.Stats.SchedulesActive}}</div>
+      <div class="text-xs text-gray-500 mt-1">active schedules</div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+    <section class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+      <h2 class="text-xs uppercase tracking-wide text-brand mb-3">Updates &amp; rollbacks (recent)</h2>
+      <dl class="space-y-1.5 text-sm">
+        <div class="flex justify-between"><dt class="text-gray-400">Updates succeeded</dt><dd class="text-state-running">{{.Stats.UpdatesSucceeded}}</dd></div>
+        <div class="flex justify-between"><dt class="text-gray-400">Updates failed</dt><dd class="text-state-stopped">{{.Stats.UpdatesFailed}}</dd></div>
+        <div class="flex justify-between"><dt class="text-gray-400">Rollbacks (auto)</dt><dd class="text-state-warning">{{.Stats.RollbacksAuto}}</dd></div>
+        <div class="flex justify-between"><dt class="text-gray-400">Rollbacks (manual)</dt><dd>{{.Stats.RollbacksManual}}</dd></div>
+      </dl>
+    </section>
+
+    <section class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+      <h2 class="text-xs uppercase tracking-wide text-brand mb-3">Notifications (recent)</h2>
+      <dl class="space-y-1.5 text-sm">
+        <div class="flex justify-between"><dt class="text-gray-400">Sent</dt><dd class="text-state-running">{{.Stats.NotificationsSent}}</dd></div>
+        <div class="flex justify-between"><dt class="text-gray-400">Failed</dt><dd class="text-state-stopped">{{.Stats.NotificationsFailed}}</dd></div>
+      </dl>
+    </section>
+  </div>
+
+  <section class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+    <h2 class="text-xs uppercase tracking-wide text-brand mb-3">Containers by stack</h2>
+    <dl class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+      {{range $stack, $count := .Stats.ContainersByStack}}
+      <div class="flex justify-between">
+        <dt class="text-gray-400 truncate">{{$stack}}</dt>
+        <dd>{{$count}}</dd>
+      </div>
+      {{end}}
+    </dl>
+  </section>
+
+  <p class="mt-6 text-xs text-gray-600">
+    These are current-state snapshots and recent-event tallies, not historical time series yet —
+    see docs/stats.md. For real history and alerting, scrape /metrics with Prometheus.
+  </p>
+</div>
+{{end}}

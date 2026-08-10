@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Light/dark theme: see tailwind.config.js's `gray` override for why this
+   is CSS variables rather than dark: variants sprinkled through every
+   template. Values are Tailwind's stock gray-50..950 as "R G B" triplets;
+   light mode reuses the same ten numbers in reverse order, so a given
+   shade keeps the same *role* (gray-950 is always the strongest
+   surface/text contrast) while its actual lightness flips. main.js's
+   pre-paint script sets [data-theme] before first render to avoid a
+   flash of the wrong theme. */
+:root,
+:root[data-theme="dark"] {
+  --gray-50: 249 250 251;
+  --gray-100: 243 244 246;
+  --gray-200: 229 231 235;
+  --gray-300: 209 213 219;
+  --gray-400: 156 163 175;
+  --gray-500: 107 114 128;
+  --gray-600: 75 85 99;
+  --gray-700: 55 65 81;
+  --gray-800: 31 41 55;
+  --gray-900: 17 24 39;
+  --gray-950: 3 7 18;
+}
+:root[data-theme="light"] {
+  --gray-50: 3 7 18;
+  --gray-100: 17 24 39;
+  --gray-200: 31 41 55;
+  --gray-300: 55 65 81;
+  --gray-400: 75 85 99;
+  --gray-500: 107 114 128;
+  --gray-600: 156 163 175;
+  --gray-700: 209 213 219;
+  --gray-800: 229 231 235;
+  --gray-900: 243 244 246;
+  --gray-950: 249 250 251;
+}
+
+/* Sidebar collapse: same before-first-paint pattern as the theme toggle
+   above — web/static/sidebar.js sets [data-sidebar] on <html> from
+   localStorage synchronously in <head>, so these attribute selectors
+   apply before the sidebar/main layout ever paints (no flash of an
+   about-to-be-collapsed sidebar). */
+html[data-sidebar="collapsed"] #sidebar { display: none; }
+html[data-sidebar="collapsed"] #sidebar-show-btn { display: flex; }
+html:not([data-sidebar="collapsed"]) #sidebar-show-btn { display: none; }
+
+/* Manual page: minimal Markdown styling, hand-rolled instead of pulling
+   in @tailwindcss/typography for a handful of rules. */
+.manual-content h1 { @apply text-xl font-semibold mt-6 mb-3 first:mt-0; }
+.manual-content h2 { @apply text-lg font-semibold mt-6 mb-2; }
+.manual-content h3 { @apply text-base font-semibold mt-4 mb-2; }
+.manual-content p { @apply mb-3 leading-relaxed text-gray-300; }
+.manual-content ul { @apply list-disc pl-5 mb-3 space-y-1 text-gray-300; }
+.manual-content ol { @apply list-decimal pl-5 mb-3 space-y-1 text-gray-300; }
+.manual-content a { @apply text-badge-update hover:underline; }
+.manual-content code { @apply bg-gray-800 px-1 py-0.5 rounded text-xs font-mono; }
+.manual-content pre { @apply bg-gray-950 border border-gray-800 rounded-lg p-3 overflow-x-auto mb-3 text-xs; }
+.manual-content pre code { @apply bg-transparent p-0; }
+.manual-content blockquote { @apply border-l-2 border-gray-700 pl-3 text-gray-400 italic mb-3; }
+.manual-content table { @apply w-full text-sm mb-3; }
+.manual-content th, .manual-content td { @apply border border-gray-800 px-2 py-1 text-left; }

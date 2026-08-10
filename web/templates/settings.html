@@ -1,0 +1,373 @@
+{{define "settings-content"}}
+<div class="p-6 max-w-4xl mx-auto space-y-8">
+  <h1 class="text-xl font-semibold mb-2">Settings</h1>
+
+  <section class="rounded-lg border border-gray-800 p-4 bg-gray-900/40">
+    <h2 class="text-xs uppercase tracking-wide text-brand mb-3">General</h2>
+    <form id="general-form" class="space-y-3 text-sm">
+      <div class="flex flex-wrap items-end gap-3">
+        <label class="text-gray-400">Check interval (minutes)
+          <input id="check_interval_minutes" name="check_interval_minutes" type="number" min="5" value="{{.CheckIntervalMinutes}}" class="mt-1 block w-28 rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+        </label>
+        <label class="text-gray-400">Auto-rollback after crashes
+          <input name="crash_loop_threshold" type="number" min="1" max="20" value="{{.CrashLoopThreshold}}" class="mt-1 block w-28 rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+        </label>
+        <label class="text-gray-400">Within (minutes)
+          <input name="crash_loop_window_minutes" type="number" min="1" max="1440" value="{{.CrashLoopWindowMinutes}}" class="mt-1 block w-28 rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+        </label>
+        <label class="text-gray-400" title="How many recent events the Logs page shows by default">Logs page size
+          <input name="logs_page_size" type="number" min="{{.MinLogsPageSize}}" max="{{.MaxLogsPageSize}}" value="{{.LogsPageSize}}" class="mt-1 block w-28 rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+        </label>
+      </div>
+      <button type="submit" class="rounded-md bg-badge-update text-white text-sm font-medium px-3 py-1.5 hover:opacity-90">Save</button>
+      <span id="general-form-status" class="text-gray-500"></span>
+    </form>
+    <p class="mt-2 text-xs text-gray-500">Takes effect on the next scheduler cycle — no restart needed.</p>
+  </section>
+
+  <section class="rounded-lg border border-gray-800 p-4 bg-gray-900/40">
+    <h2 class="text-xs uppercase tracking-wide text-brand mb-3">Registries</h2>
+    <div id="registry-list" class="space-y-2 mb-4">
+      {{range .Registries}}
+      <div class="registry-row rounded-md border border-gray-800 p-2 text-sm" data-host="{{.Host}}" data-username="{{.Username}}" data-auth-host="{{.AuthHost}}">
+        <div class="flex items-center gap-2"><span class="font-mono flex-1">{{.Host}}</span>
+          {{if .CredentialsConfigured}}<span class="text-xs text-state-running">credentials</span>{{end}}
+          {{if .ProxyConfigured}}<span class="text-xs text-badge-scheduled">proxy</span>{{end}}
+          {{if .CAConfigured}}<span class="text-xs text-brand">custom CA</span>{{end}}
+          <button type="button" class="registry-remove text-xs border border-state-stopped/50 text-state-stopped rounded px-2 py-1">Remove</button>
+        </div>
+      </div>
+      {{end}}
+      {{if not .Registries}}<p class="text-sm text-gray-500">No runtime registry configuration.</p>{{end}}
+    </div>
+    <form id="registry-form" class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+      <input name="host" required placeholder="registry.example.com[:port]" class="rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5 font-mono">
+      <input name="auth_host" placeholder="token auth host (only if different)" class="rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+      <input name="username" placeholder="username" class="rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+      <input name="password" type="password" placeholder="password or pull token (write-only)" class="rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+      <input name="proxy_url" type="password" placeholder="https://proxy.example:8443 (write-only)" class="rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+      <textarea name="ca_pem" rows="3" placeholder="Custom CA PEM (write-only)" class="rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5 font-mono text-xs"></textarea>
+      <div class="md:col-span-2 flex gap-2">
+        <button type="button" id="registry-test" class="w-fit rounded-md border border-brand text-brand px-3 py-1.5">Test connection</button>
+        <button type="submit" class="w-fit rounded-md bg-badge-update text-white px-3 py-1.5">Add or replace registry</button>
+      </div>
+    </form>
+    <p id="registry-status" class="mt-2 text-xs text-gray-500"></p>
+  </section>
+
+  <section class="rounded-lg border border-gray-800 p-4 bg-gray-900/40">
+    <h2 class="text-xs uppercase tracking-wide text-brand mb-3">Exclusions</h2>
+    <form id="exclusions-form" class="space-y-3 text-sm">
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Excluded containers</label>
+        <div id="excl-containers-chips" class="flex flex-wrap gap-1 mb-1.5 empty:mb-0"></div>
+        <input id="excl-containers-search" autocomplete="off" placeholder="search a container…" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+        <input type="hidden" name="containers" id="excl-containers-value" value="{{.ExcludedContainersCSV}}">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Excluded stacks</label>
+        <div id="excl-stacks-chips" class="flex flex-wrap gap-1 mb-1.5 empty:mb-0"></div>
+        <input id="excl-stacks-search" autocomplete="off" placeholder="search a stack…" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+        <input type="hidden" name="stacks" id="excl-stacks-value" value="{{.ExcludedStacksCSV}}">
+      </div>
+      <button type="submit" class="rounded-md bg-badge-update text-white text-sm font-medium px-3 py-1.5 hover:opacity-90">Save exclusions</button>
+    </form>
+    <p class="mt-2 text-xs text-gray-500">Same effect as the <code>doupro.enable=false</code> label, without editing compose files.</p>
+  </section>
+
+  <section class="rounded-lg border border-gray-800 p-4 bg-gray-900/40">
+    <h2 class="text-xs uppercase tracking-wide text-brand mb-3">Security — password</h2>
+    <form id="password-form" class="flex flex-wrap items-end gap-2 text-sm">
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Current password</label>
+        <input name="current_password" type="password" class="w-48 rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">New password</label>
+        <input name="new_password" type="password" minlength="8" class="w-48 rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+      </div>
+      <button type="submit" class="rounded-md bg-badge-update text-white text-sm font-medium px-3 py-1.5 hover:opacity-90">Change password</button>
+    </form>
+    <p id="password-form-status" class="mt-2 text-xs text-gray-500"></p>
+  </section>
+
+  <section class="rounded-lg border border-gray-800 p-4 bg-gray-900/40">
+    <h2 class="text-xs uppercase tracking-wide text-brand mb-3">Security — users and roles</h2>
+    <div class="space-y-3 mb-4">
+      {{range .Users}}
+      {{if .Access.Protected}}
+      <div class="rounded-md border border-brand/40 bg-brand/5 p-3 text-sm">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="font-medium flex-1">{{.Username}}</span>
+          <span class="text-xs text-gray-500">{{.AuthProvider}} · {{.CreatedAt}}</span>
+          <span class="rounded bg-brand/15 px-2 py-1 text-[10px] font-semibold uppercase text-brand">Admin · Full access</span>
+        </div>
+        <p class="text-xs text-gray-400">Bootstrap administrator — always has every permission and cannot be reconfigured or deleted.</p>
+      </div>
+      {{else}}
+      <form class="user-access-form rounded-md border border-gray-800 p-3 text-sm" data-id="{{.ID}}">
+        <div class="flex flex-wrap items-center gap-2 mb-2">
+          <span class="font-medium flex-1">{{.Username}}</span>
+          <span class="text-xs text-gray-500">{{.AuthProvider}} · {{.CreatedAt}}</span>
+          <select name="role" class="rounded-md bg-gray-950 border border-gray-800 px-2 py-1">
+            <option value="admin" {{if eq .Access.Role "admin"}}selected{{end}}>Admin</option>
+            <option value="write" {{if eq .Access.Role "write"}}selected{{end}}>Write</option>
+            <option value="read" {{if eq .Access.Role "read"}}selected{{end}}>Read</option>
+          </select>
+          <button type="submit" class="rounded-md bg-badge-update text-white text-xs font-medium px-2 py-1 hover:opacity-90">Save</button>
+          {{if ne .ID $.CurrentUserID}}
+          <button type="button" class="user-delete rounded-md border border-state-stopped/50 text-state-stopped text-xs px-2 py-1" data-id="{{.ID}}">Delete</button>
+          {{end}}
+        </div>
+        <div class="permission-list space-y-1 text-xs text-gray-400">
+          <label class="block"><input name="view_logs" type="checkbox" {{if .Access.ViewLogs}}checked{{end}}> View Logs</label>
+          <label class="block"><input name="manage_schedules" type="checkbox" {{if .Access.ManageSchedules}}checked{{end}}> Manage schedules</label>
+          <label class="block"><input name="manage_notifications" type="checkbox" {{if .Access.ManageNotifications}}checked{{end}}> Manage notifications</label>
+          <label class="block"><input name="view_stats" type="checkbox" {{if .Access.ViewStats}}checked{{end}}> View stats</label>
+        </div>
+      </form>
+      {{end}}
+      {{end}}
+    </div>
+    <form id="user-create-form" class="space-y-2 text-sm">
+      <div class="flex flex-wrap gap-2">
+        <input name="username" required placeholder="username" class="flex-1 min-w-40 rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+        <input name="password" required minlength="8" type="password" placeholder="initial password" class="flex-1 min-w-48 rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+        <select name="role" class="rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+          <option value="read">Read</option><option value="write">Write</option><option value="admin">Admin</option>
+        </select>
+        <button type="submit" class="rounded-md bg-badge-update text-white font-medium px-3 py-1.5 hover:opacity-90">Create user</button>
+      </div>
+      <div class="permission-list space-y-1 text-xs text-gray-400">
+        <label class="block"><input name="view_logs" type="checkbox"> View Logs</label>
+        <label class="block"><input name="manage_schedules" type="checkbox"> Manage schedules</label>
+        <label class="block"><input name="manage_notifications" type="checkbox"> Manage notifications</label>
+        <label class="block"><input name="view_stats" type="checkbox"> View stats</label>
+      </div>
+    </form>
+    <p id="user-form-status" class="mt-2 text-xs text-gray-500"></p>
+  </section>
+
+  <section class="rounded-lg border border-gray-800 p-4 bg-gray-900/40">
+    <h2 class="text-xs uppercase tracking-wide text-brand mb-3">Security — API keys</h2>
+
+    <div id="api-key-list" class="space-y-1.5 mb-3 text-sm">
+      {{range .APIKeys}}
+      <div class="flex items-center gap-2">
+        <span class="min-w-0 flex-1 truncate">{{.Name}}</span>
+        <span class="text-gray-500 font-mono text-xs">{{.KeyPrefix}}…</span>
+        <span class="rounded bg-gray-800 px-1.5 py-0.5 text-[10px] uppercase">{{.Access.Role}}</span>
+        <span class="text-gray-600 text-xs">{{.CreatedAt}}</span>
+        <button data-id="{{.ID}}" class="key-revoke text-xs px-2 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800">Revoke</button>
+      </div>
+      {{end}}
+      {{if not .APIKeys}}
+      <p class="text-gray-500">No API keys yet.</p>
+      {{end}}
+    </div>
+
+    <form id="api-key-form" class="space-y-2 text-sm">
+      <div class="flex items-center gap-2">
+        <input name="name" required placeholder="key name, e.g. homelab-cron" class="flex-1 rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+        <select name="role" class="rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+          <option value="read">Read</option><option value="write">Write</option><option value="admin">Admin</option>
+        </select>
+        <button type="submit" class="rounded-md bg-badge-update text-white text-sm font-medium px-3 py-1.5 hover:opacity-90">Create key</button>
+      </div>
+      <div class="permission-list space-y-1 text-xs text-gray-400">
+        <label class="block"><input name="view_logs" type="checkbox"> View Logs</label>
+        <label class="block"><input name="manage_schedules" type="checkbox"> Manage schedules</label>
+        <label class="block"><input name="manage_notifications" type="checkbox"> Manage notifications</label>
+        <label class="block"><input name="view_stats" type="checkbox"> View stats</label>
+      </div>
+    </form>
+    <p id="api-key-reveal" class="mt-2 text-sm font-mono break-all"></p>
+  </section>
+</div>
+
+<script nonce="{{.CSPNonce}}" src="/static/combobox.js"></script>
+<script nonce="{{.CSPNonce}}">
+function publicRegistryRows() {
+  return [...document.querySelectorAll('.registry-row')].map((row) => ({host: row.dataset.host, username: row.dataset.username, auth_host: row.dataset.authHost}));
+}
+async function saveRegistries(items) {
+  return fetch('/api/v1/settings/registries', {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(items)});
+}
+document.querySelectorAll('.registry-remove').forEach((button) => button.addEventListener('click', async () => {
+  const host = button.closest('.registry-row').dataset.host;
+  const resp = await saveRegistries(publicRegistryRows().filter((item) => item.host !== host));
+  if (resp.ok) location.reload();
+}));
+document.getElementById('registry-form').addEventListener('submit', async (event) => {
+  event.preventDefault(); const f = new FormData(event.target); const host = f.get('host').trim();
+  const next = publicRegistryRows().filter((item) => item.host !== host);
+  next.push({host, username:f.get('username'), password:f.get('password'), auth_host:f.get('auth_host'), proxy_url:f.get('proxy_url'), ca_pem:f.get('ca_pem')});
+  const resp = await saveRegistries(next); const data = await resp.json().catch(() => ({}));
+  document.getElementById('registry-status').textContent = resp.ok ? 'saved' : ((data.error&&data.error.message)||'failed to save');
+  if (resp.ok) location.reload();
+});
+document.getElementById('registry-test').addEventListener('click', async () => {
+  const form = document.getElementById('registry-form'); const f = new FormData(form);
+  const payload = {host:f.get('host').trim(), username:f.get('username'), password:f.get('password'), auth_host:f.get('auth_host'), proxy_url:f.get('proxy_url'), ca_pem:f.get('ca_pem')};
+  const resp = await fetch('/api/v1/settings/registries/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+  const data = await resp.json().catch(() => ({}));
+  document.getElementById('registry-status').textContent = resp.ok ? 'connection successful' : ((data.error&&data.error.message)||'connection failed');
+});
+document.getElementById('password-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const status = document.getElementById('password-form-status');
+  const resp = await fetch('/api/v1/auth/password', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ current_password: f.get('current_password'), new_password: f.get('new_password') }),
+  });
+  if (resp.ok) {
+    status.textContent = 'password changed';
+    status.classList.remove('text-state-stopped');
+    e.target.reset();
+    return;
+  }
+  const data = await resp.json().catch(() => ({}));
+  status.textContent = (data.error && data.error.message) || 'failed to change password';
+  status.classList.add('text-state-stopped');
+});
+
+document.getElementById('general-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const resp = await fetch('/api/v1/settings/general', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      check_interval_minutes: parseInt(f.get('check_interval_minutes'), 10),
+      crash_loop_threshold: parseInt(f.get('crash_loop_threshold'), 10),
+      crash_loop_window_minutes: parseInt(f.get('crash_loop_window_minutes'), 10),
+      logs_page_size: parseInt(f.get('logs_page_size'), 10),
+    }),
+  });
+  document.getElementById('general-form-status').textContent = resp.ok ? 'saved' : 'failed to save';
+});
+
+(async function loadExclusionOptions() {
+  let containers = [], stacks = [];
+  try {
+    const resp = await fetch('/api/v1/containers');
+    if (resp.ok) {
+      const data = await resp.json();
+      containers = [...new Set(data.map((c) => c.name))].sort();
+      stacks = [...new Set(data.map((c) => c.stack).filter(Boolean))].sort();
+    }
+  } catch (e) {
+    // Non-fatal — fields still work, just without suggestions.
+  }
+  attachCombobox(document.getElementById('excl-containers-search'), {
+    multi: true, getOptions: () => containers,
+    chipsEl: document.getElementById('excl-containers-chips'),
+    hiddenEl: document.getElementById('excl-containers-value'),
+  });
+  attachCombobox(document.getElementById('excl-stacks-search'), {
+    multi: true, getOptions: () => stacks,
+    chipsEl: document.getElementById('excl-stacks-chips'),
+    hiddenEl: document.getElementById('excl-stacks-value'),
+  });
+})();
+
+document.getElementById('exclusions-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const split = (v) => v.split(',').map(s => s.trim()).filter(Boolean);
+  await fetch('/api/v1/settings/exclusions', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ containers: split(f.get('containers')), stacks: split(f.get('stacks')) }),
+  });
+  location.reload();
+});
+
+document.getElementById('api-key-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const name = f.get('name');
+  const resp = await fetch('/api/v1/settings/security/api-keys', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, access: accessFromForm(f) }),
+  });
+  const data = await resp.json();
+  if (resp.ok) {
+    document.getElementById('api-key-reveal').textContent =
+      'New key (shown once, copy it now): ' + data.key;
+  }
+});
+
+function accessFromForm(f) {
+  return {
+    role: f.get('role'),
+    view_logs: f.has('view_logs'),
+    manage_schedules: f.has('manage_schedules'),
+    manage_notifications: f.has('manage_notifications'),
+    view_stats: f.has('view_stats'),
+  };
+}
+
+function syncRolePermissions(form) {
+  const role = form.querySelector('[name="role"]');
+  if (!role) return;
+  const permissions = form.querySelectorAll('.permission-list input[type="checkbox"]');
+  const apply = () => {
+    const admin = role.value === 'admin';
+    permissions.forEach((input) => {
+      input.disabled = admin;
+      input.checked = admin ? true : input.checked;
+      input.closest('label').classList.toggle('opacity-50', admin);
+    });
+  };
+  role.addEventListener('change', () => {
+    if (role.value !== 'admin') permissions.forEach((input) => { input.checked = false; });
+    apply();
+  });
+  apply();
+}
+
+document.querySelectorAll('.user-access-form, #user-create-form, #api-key-form').forEach(syncRolePermissions);
+
+document.getElementById('user-create-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const resp = await fetch('/api/v1/users', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: f.get('username'), password: f.get('password'), access: accessFromForm(f) }),
+  });
+  if (resp.ok) location.reload();
+  const data = await resp.json().catch(() => ({}));
+  document.getElementById('user-form-status').textContent = (data.error && data.error.message) || 'failed to create user';
+});
+
+document.querySelectorAll('.user-access-form').forEach((form) => {
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const resp = await fetch('/api/v1/users/' + form.dataset.id, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(accessFromForm(new FormData(form))),
+    });
+    if (resp.ok) location.reload();
+    const data = await resp.json().catch(() => ({}));
+    document.getElementById('user-form-status').textContent = (data.error && data.error.message) || 'failed to update user';
+  });
+});
+
+document.querySelectorAll('.user-delete').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('Delete this user and all of their sessions?')) return;
+    const resp = await fetch('/api/v1/users/' + btn.dataset.id, { method: 'DELETE' });
+    if (resp.ok) location.reload();
+    const data = await resp.json().catch(() => ({}));
+    document.getElementById('user-form-status').textContent = (data.error && data.error.message) || 'failed to delete user';
+  });
+});
+
+document.querySelectorAll('.key-revoke').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    await fetch('/api/v1/settings/security/api-keys/' + btn.dataset.id, { method: 'DELETE' });
+    location.reload();
+  });
+});
+</script>
+{{end}}
