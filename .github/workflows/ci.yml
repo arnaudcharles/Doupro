@@ -13,7 +13,7 @@ jobs:
     name: Build, vet & test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v5
         with:
@@ -33,7 +33,7 @@ jobs:
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v5
         with:
@@ -47,7 +47,7 @@ jobs:
     name: Docker image build (multi-arch)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Only needed so buildx can pull/inspect the arm64 base image layers
       # on this amd64 runner; the Go build itself cross-compiles natively
