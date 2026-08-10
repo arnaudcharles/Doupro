@@ -10,7 +10,7 @@
 # CGO dependency this module would otherwise need (SQLite) is deliberately
 # the pure-Go modernc.org/sqlite (see CLAUDE.md) specifically so this stays
 # possible with CGO_ENABLED=0, no cross C toolchain required either way.
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
 
 # Fixed, non-root UID/GID so the final distroless image can carry the same
 # user without a shell to create one there. Kept in sync with the group_add
