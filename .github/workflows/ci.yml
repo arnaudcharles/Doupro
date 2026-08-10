@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Build, vet & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./... -race -cover
+
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12
+
+  docker:
+    name: Docker image build (multi-arch)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Only needed so buildx can pull/inspect the arm64 base image layers
+      # on this amd64 runner; the Go build itself cross-compiles natively
+      # (see the Dockerfile's --platform=$BUILDPLATFORM build stage), so
+      # this isn't emulating the compiler, just the final-stage assembly.
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image for linux/amd64 and linux/arm64 (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: sharlihe/doupro:ci

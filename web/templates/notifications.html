@@ -1,0 +1,608 @@
+{{define "notifications-content"}}
+<div class="p-6 max-w-5xl mx-auto">
+  <div class="flex items-baseline justify-between mb-6">
+    <h1 class="text-xl font-semibold">Notifications</h1>
+    <div class="text-sm text-gray-500">{{len .Notifications}} shown</div>
+  </div>
+
+  <section class="mb-8 rounded-lg border border-gray-800 p-4 bg-gray-900/40">
+    <h2 class="text-xs uppercase tracking-wide text-brand mb-3">Channels</h2>
+
+    <div id="channel-list" class="space-y-1.5 mb-4">
+      {{range $i, $ch := .Channels}}
+      <div class="rounded-md border border-gray-800" data-channel-row="{{$i}}">
+        <div class="flex items-center gap-2 text-sm px-2 py-1.5">
+          <span class="channel-provider-badge shrink-0 text-xs font-medium px-1.5 py-0.5 rounded" data-provider="{{$ch.Provider}}"></span>
+          <span class="min-w-0 flex-1 truncate">{{$ch.Name}}</span>
+          <button type="button" data-index="{{$i}}" class="channel-filters-toggle shrink-0 text-xs px-2 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800">Filters</button>
+          <button type="button" data-index="{{$i}}" class="channel-modify shrink-0 text-xs px-2 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800">Modify</button>
+          <button type="button" data-index="{{$i}}" class="channel-test shrink-0 text-xs px-2 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800">Test</button>
+          <button type="button" data-index="{{$i}}" class="channel-remove shrink-0 text-xs px-2 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800">Remove</button>
+        </div>
+        <div id="channel-filters-{{$i}}" class="channel-filter-panel hidden border-t border-gray-800 px-2 py-2"></div>
+      </div>
+      {{end}}
+      {{if not .Channels}}
+      <p class="text-sm text-gray-500">No channels configured yet.</p>
+      {{end}}
+    </div>
+    <p id="channel-action-status" class="text-xs text-gray-500 mb-3"></p>
+
+    <button type="button" id="channel-add-toggle" class="text-xs px-2.5 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800">+ Add a channel</button>
+
+    <div id="channel-form-section" class="hidden pt-4 mt-4">
+      <h3 id="channel-form-title" class="text-xs uppercase tracking-wide text-gray-500 mb-3">Add a channel</h3>
+      <p id="channel-edit-hint" class="hidden text-xs text-gray-500 mb-3">Leave the destination fields below blank to keep this channel's current destination — only fill them in if you want to change it.</p>
+      <form id="channel-form" class="space-y-3 text-sm">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Name</label>
+            <input name="name" placeholder="e.g. Telegram — Username" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Provider</label>
+            <select id="channel-provider" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+              <option value="telegram">Telegram</option>
+              <option value="ntfy">ntfy</option>
+              <option value="slack">Slack</option>
+              <option value="discord">Discord</option>
+              <option value="gotify">Gotify</option>
+              <option value="custom">Custom (raw shoutrrr URL)</option>
+            </select>
+          </div>
+        </div>
+
+        <div data-provider="telegram" class="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Bot token</label>
+            <input data-field="token" placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5 font-mono text-xs">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Chat ID(s)</label>
+            <input data-field="chats" placeholder="123456789 or @mychannel (comma-separated for several)" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+          </div>
+        </div>
+
+        <div data-provider="ntfy" class="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Topic</label>
+            <input data-field="topic" placeholder="doupro-alerts" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Server (optional)</label>
+            <input data-field="host" placeholder="ntfy.sh" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Username (optional)</label>
+            <input data-field="username" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Password (optional)</label>
+            <input data-field="password" type="password" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+          </div>
+          <label class="md:col-span-2 flex items-center gap-1.5 text-xs text-gray-400">
+            <input data-field="http" type="checkbox" class="rounded border-gray-700 bg-gray-950">
+            Self-hosted over plain HTTP (no TLS)
+          </label>
+          <p class="md:col-span-2 text-xs text-gray-500">Subscribe to the same topic in the ntfy app first. Enter only the server hostname here, without https:// or a trailing slash.</p>
+        </div>
+
+        <div data-provider="slack">
+          <label class="block text-xs text-gray-400 mb-1">Incoming Webhook URL</label>
+          <input data-field="webhook" placeholder="https://hooks.slack.com/services/T000/B000/XXXXXXXXXXXXXXXXXXXXXXXX" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5 font-mono text-xs">
+          <p class="mt-1 text-xs text-gray-500">Slack → your app → Incoming Webhooks → copy the webhook URL.</p>
+        </div>
+
+        <div data-provider="discord">
+          <label class="block text-xs text-gray-400 mb-1">Webhook URL</label>
+          <input data-field="webhook" placeholder="https://discord.com/api/webhooks/123456789/abcDEFghiJKLmnoPQRstuVWXyz" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5 font-mono text-xs">
+          <p class="mt-1 text-xs text-gray-500">Server Settings → Integrations → Webhooks → copy the webhook URL.</p>
+        </div>
+
+        <div data-provider="gotify" class="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Server host</label>
+            <input data-field="host" placeholder="gotify.example.com" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Application token</label>
+            <input data-field="token" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5 font-mono text-xs">
+          </div>
+          <label class="md:col-span-2 flex items-center gap-1.5 text-xs text-gray-400">
+            <input data-field="http" type="checkbox" class="rounded border-gray-700 bg-gray-950">
+            Self-hosted over plain HTTP (no TLS)
+          </label>
+        </div>
+
+        <div data-provider="custom">
+          <label class="block text-xs text-gray-400 mb-1">shoutrrr URL</label>
+          <input data-field="url" placeholder="e.g. matrix://user:pass@host/?rooms=room" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5 font-mono text-xs">
+          <p class="mt-1 text-xs text-gray-500">For any other service shoutrrr supports — see containrrr.dev/shoutrrr.</p>
+        </div>
+
+        <div class="border-t border-gray-800 pt-3">
+          <p class="text-xs text-gray-400 mb-2">Filters (optional — leave everything unchecked/empty to receive every event for every container)</p>
+          <div id="channel-filters-new" class="channel-filter-panel"></div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button type="button" id="channel-test-new" class="rounded-md border border-gray-700 text-gray-300 text-sm font-medium px-3 py-1.5 hover:bg-gray-800">Test</button>
+          <button type="submit" id="channel-submit-btn" class="rounded-md bg-badge-update text-white text-sm font-medium px-4 py-1.5 hover:opacity-90">Add &amp; save</button>
+          <button type="button" id="channel-cancel-btn" class="hidden rounded-md border border-gray-700 text-gray-300 text-sm font-medium px-3 py-1.5 hover:bg-gray-800">Cancel</button>
+        </div>
+      </form>
+      <p id="channel-form-error" class="mt-2 text-sm text-state-stopped"></p>
+    </div>
+  </section>
+
+  <section class="mb-8">
+    <div class="flex items-baseline justify-between mb-3">
+      <h2 class="text-xs uppercase tracking-wide text-brand">Durable delivery queue</h2>
+      <span class="text-xs text-gray-500">At-least-once delivery</span>
+    </div>
+    {{if .NotificationJobs}}
+    <div class="rounded-lg border border-gray-800 divide-y divide-gray-800 overflow-hidden text-sm">
+      {{range .NotificationJobs}}
+      <div class="flex items-center gap-3 px-4 py-2.5 bg-gray-900/40">
+        <span class="text-gray-500 shrink-0 tabular-nums">{{.CreatedAt}}</span>
+        <span class="shrink-0 text-xs font-medium px-1.5 py-0.5 rounded
+          {{if eq .Status "sent"}}bg-state-running/15 text-state-running{{else if eq .Status "dead_letter"}}bg-state-stopped/15 text-state-stopped{{else}}bg-badge-scheduled/15 text-badge-scheduled{{end}}">{{.Status}}</span>
+        <span class="shrink-0 text-gray-400">{{.Attempts}}/{{.MaxAttempts}}</span>
+        <span class="shrink-0 text-badge-scheduled">{{.Channel}}</span>
+        <span class="min-w-0 flex-1 truncate" title="{{.LastError}}">{{.Event}}</span>
+        {{if eq .Status "dead_letter"}}
+        <button type="button" data-retry-id="{{.ID}}" class="notification-retry rounded border border-brand text-brand px-2 py-1 text-xs hover:bg-brand/10">Retry</button>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+    {{else}}
+    <p class="rounded-lg border border-dashed border-gray-800 p-6 text-center text-gray-500 text-sm">The delivery queue is empty.</p>
+    {{end}}
+  </section>
+
+  {{if not .Notifications}}
+  <div class="rounded-lg border border-dashed border-gray-800 p-10 text-center text-gray-500 text-sm">
+    No notifications sent yet.
+  </div>
+  {{end}}
+
+  {{if .Notifications}}
+  <div class="rounded-lg border border-gray-800 divide-y divide-gray-800 overflow-hidden text-sm">
+    {{range .Notifications}}
+    <div class="flex items-center gap-3 px-4 py-2.5 bg-gray-900/40">
+      <span class="text-gray-500 shrink-0 tabular-nums">{{.Timestamp}}</span>
+      <span class="shrink-0 text-xs font-medium px-1.5 py-0.5 rounded
+        {{if eq .Status "sent"}}bg-state-running/15 text-state-running{{else}}bg-state-stopped/15 text-state-stopped{{end}}">
+        {{.Status}}
+      </span>
+      <span class="shrink-0 text-gray-400 font-mono text-xs">{{.Event}}</span>
+      <span class="shrink-0 text-badge-scheduled">{{.Channel}}</span>
+      <span class="min-w-0 flex-1 truncate">{{.Message}}</span>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+
+<script nonce="{{.CSPNonce}}" src="/static/combobox.js"></script>
+<script nonce="{{.CSPNonce}}">
+document.querySelectorAll('.notification-retry').forEach((button) => button.addEventListener('click', async () => {
+  button.disabled = true;
+  const response = await fetch(`/api/v1/notifications/queue/${button.dataset.retryId}/retry`, {method: 'POST'});
+  if (response.ok) window.location.reload();
+  else button.disabled = false;
+}));
+// --- Provider display (badge on already-configured channels) --------------
+const providerMeta = {
+  telegram: { label: 'Telegram', class: 'bg-sky-500/15 text-sky-400' },
+  ntfy:     { label: 'ntfy',     class: 'bg-red-500/15 text-red-400' },
+  slack:    { label: 'Slack',    class: 'bg-fuchsia-500/15 text-fuchsia-400' },
+  discord:  { label: 'Discord',  class: 'bg-indigo-500/15 text-indigo-400' },
+  gotify:   { label: 'Gotify',   class: 'bg-teal-500/15 text-teal-400' },
+};
+document.querySelectorAll('.channel-provider-badge').forEach((el) => {
+  const scheme = (el.dataset.provider || '').toLowerCase();
+  const meta = providerMeta[scheme] || { label: scheme || '?', class: 'bg-gray-800 text-gray-400' };
+  el.textContent = meta.label;
+  el.className = 'channel-provider-badge shrink-0 text-xs font-medium px-1.5 py-0.5 rounded ' + meta.class;
+});
+
+// --- Add-channel form: swap fields per provider, build the shoutrrr URL ---
+function showProviderFields() {
+  const provider = document.getElementById('channel-provider').value;
+  // Only swap the provider-specific inputs in the add-channel form. Saved
+  // channel badges use the same data-provider attribute and must all remain
+  // visible regardless of the provider currently selected in this form.
+  document.querySelectorAll('#channel-form [data-provider]').forEach((el) => {
+    el.classList.toggle('hidden', el.dataset.provider !== provider);
+  });
+}
+document.getElementById('channel-provider').addEventListener('change', showProviderFields);
+showProviderFields();
+
+function fieldValue(provider, field) {
+  const el = document.querySelector(`[data-provider="${provider}"] [data-field="${field}"]`);
+  if (!el) return '';
+  return el.type === 'checkbox' ? el.checked : el.value.trim();
+}
+
+// Parses "https://.../<marker>/A/B/C..." -> ['A','B','C',...], requiring at
+// least minParts segments (3 for Slack's token triplet, 2 for Discord's
+// webhook id + token).
+function parseWebhookPath(url, marker, minParts) {
+  const idx = url.indexOf(marker);
+  if (idx === -1) return null;
+  const parts = url.slice(idx + marker.length).split('/').filter(Boolean);
+  return parts.length >= minParts ? parts : null;
+}
+
+// Builds the shoutrrr URL for the currently selected provider from its
+// fields, or throws with a human-readable message if something required
+// is missing/malformed — see docs/notifications.md for the URL formats,
+// cross-checked against containrrr/shoutrrr's own service configs.
+function buildChannelURL() {
+  const provider = document.getElementById('channel-provider').value;
+
+  if (provider === 'telegram') {
+    const token = fieldValue('telegram', 'token');
+    const chats = fieldValue('telegram', 'chats');
+    if (!token || !chats) throw new Error('Bot token and Chat ID(s) are required.');
+    // shoutrrr expects the token split across the URL's user:password
+    // parts (it rejoins them with ":" on its side) — a single URL-encoded
+    // blob with an escaped colon does not round-trip.
+    const sep = token.indexOf(':');
+    if (sep === -1) throw new Error('Bot token should look like 123456789:AbcDefGhiJkl... (numeric ID, colon, secret).');
+    const id = token.slice(0, sep);
+    const secret = token.slice(sep + 1);
+    return `telegram://${encodeURIComponent(id)}:${encodeURIComponent(secret)}@telegram?chats=${encodeURIComponent(chats)}`;
+  }
+
+  if (provider === 'ntfy') {
+    const topic = fieldValue('ntfy', 'topic');
+    if (!topic) throw new Error('Topic is required.');
+    const host = fieldValue('ntfy', 'host') || 'ntfy.sh';
+    const user = fieldValue('ntfy', 'username');
+    const pass = fieldValue('ntfy', 'password');
+    let auth = '';
+    if (user) auth = pass ? `${encodeURIComponent(user)}:${encodeURIComponent(pass)}@` : `${encodeURIComponent(user)}@`;
+    const scheme = fieldValue('ntfy', 'http') ? '?scheme=http' : '';
+    return `ntfy://${auth}${host}/${encodeURIComponent(topic)}${scheme}`;
+  }
+
+  if (provider === 'slack') {
+    const webhook = fieldValue('slack', 'webhook');
+    const parts = parseWebhookPath(webhook, '/services/', 3);
+    if (!parts) throw new Error('That doesn\'t look like a Slack Incoming Webhook URL (expected .../services/T.../B.../...).');
+    return `slack://${parts[0]}/${parts[1]}/${parts[2]}`;
+  }
+
+  if (provider === 'discord') {
+    const webhook = fieldValue('discord', 'webhook');
+    const parts = parseWebhookPath(webhook, '/webhooks/', 2);
+    if (!parts) throw new Error('That doesn\'t look like a Discord webhook URL (expected .../webhooks/ID/TOKEN).');
+    return `discord://${parts[1]}@${parts[0]}`;
+  }
+
+  if (provider === 'gotify') {
+    const host = fieldValue('gotify', 'host').replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const token = fieldValue('gotify', 'token');
+    if (!host || !token) throw new Error('Server host and application token are required.');
+    const tls = fieldValue('gotify', 'http') ? '?disabletls=yes' : '';
+    return `gotify://${host}/${token}${tls}`;
+  }
+
+  const url = fieldValue('custom', 'url');
+  if (!url) throw new Error('A shoutrrr URL is required.');
+  return url;
+}
+
+async function testURL(url, name = '') {
+  const resp = await fetch('/api/v1/settings/notifications/test', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(url ? { url } : { name }),
+  });
+  if (resp.ok) return { ok: true };
+  const data = await resp.json().catch(() => ({}));
+  return { ok: false, message: (data.error && data.error.message) || 'Test failed.' };
+}
+
+document.getElementById('channel-test-new').addEventListener('click', async () => {
+  const errorEl = document.getElementById('channel-form-error');
+  errorEl.textContent = '';
+  errorEl.classList.remove('text-state-running');
+  let url;
+  try {
+    url = buildChannelURL();
+  } catch (e) {
+    errorEl.textContent = e.message;
+    return;
+  }
+  errorEl.textContent = 'sending test message…';
+  const result = await testURL(url);
+  errorEl.textContent = result.ok ? 'test message sent' : result.message;
+  errorEl.classList.toggle('text-state-running', result.ok);
+  errorEl.classList.toggle('text-state-stopped', !result.ok);
+});
+
+// --- Per-channel filters: event-type checkboxes + stack/container scope ---
+// Categories match the 8-row "Event types" table in docs/notifications.md;
+// internal/notifier.categorize() collapses the finer-grained event types
+// Notify actually emits (e.g. "update.succeeded", "rollback.manual.failed")
+// down to these. "rollback.auto" has no checkbox at all — it's documented
+// as never silenceable at the event-type level, enforced server-side, so
+// offering an unchecked-but-ignored box would just be confusing.
+const EVENT_CATEGORIES = [
+  ['update.available', 'Update available (detected)'],
+  ['update.applied', 'Update applied (success)'],
+  ['update.failed', 'Update failed'],
+  ['rollback.manual', 'Rollback — manual'],
+  ['schedule.changed', 'Schedule created / modified / cancelled'],
+  ['schedule.executed', 'Recurring policy executed'],
+  ['check.failed', 'Check failed (registry unreachable)'],
+];
+
+let containerOptions = [], stackOptions = [];
+(async function loadFilterOptions() {
+  try {
+    const resp = await fetch('/api/v1/containers');
+    if (resp.ok) {
+      const data = await resp.json();
+      containerOptions = [...new Set(data.map((c) => c.name))].sort();
+      stackOptions = [...new Set(data.map((c) => c.stack).filter(Boolean))].sort();
+    }
+  } catch (e) {
+    // Non-fatal — the scope fields still work, just without suggestions.
+  }
+})();
+
+// Renders the checkboxes + scope comboboxes into panelEl for the given
+// channel (an empty {} for the add-channel form), scoped by a unique id
+// prefix so multiple panels on the same page don't collide on element IDs.
+// Returns a function that reads the panel's current state back into
+// {events, stacks, containers} arrays, in the shape notifier.Channel
+// expects.
+function renderFilterPanel(panelEl, idPrefix, channel) {
+  const events = channel.events || [];
+  const stacks = channel.stacks || [];
+  const containers = channel.containers || [];
+
+  const checkboxesHTML = EVENT_CATEGORIES.map(([value, label]) => `
+    <label class="flex items-center gap-1.5 text-xs text-gray-300">
+      <input type="checkbox" value="${value}" ${events.includes(value) ? 'checked' : ''}
+             class="channel-filter-event rounded border-gray-700 bg-gray-950">
+      ${label}
+    </label>
+  `).join('');
+
+  panelEl.innerHTML = `
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mb-3">${checkboxesHTML}</div>
+    <p class="text-xs text-gray-600 mb-2">Rollback — automatic (crash-loop) is always sent regardless of the boxes above; it still respects the scope below.</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Only these stacks (empty = all)</label>
+        <div class="channel-filter-stacks-chips flex flex-wrap gap-1 mb-1.5 empty:mb-0"></div>
+        <input class="channel-filter-stacks-search w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5" autocomplete="off" placeholder="search a stack…">
+        <input type="hidden" class="channel-filter-stacks-value" value="${stacks.join(',')}">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Only these containers (empty = all)</label>
+        <div class="channel-filter-containers-chips flex flex-wrap gap-1 mb-1.5 empty:mb-0"></div>
+        <input class="channel-filter-containers-search w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5" autocomplete="off" placeholder="search a container…">
+        <input type="hidden" class="channel-filter-containers-value" value="${containers.join(',')}">
+      </div>
+    </div>
+  `;
+
+  attachCombobox(panelEl.querySelector('.channel-filter-stacks-search'), {
+    multi: true, getOptions: () => stackOptions,
+    chipsEl: panelEl.querySelector('.channel-filter-stacks-chips'),
+    hiddenEl: panelEl.querySelector('.channel-filter-stacks-value'),
+  });
+  attachCombobox(panelEl.querySelector('.channel-filter-containers-search'), {
+    multi: true, getOptions: () => containerOptions,
+    chipsEl: panelEl.querySelector('.channel-filter-containers-chips'),
+    hiddenEl: panelEl.querySelector('.channel-filter-containers-value'),
+  });
+
+  return () => ({
+    events: [...panelEl.querySelectorAll('.channel-filter-event:checked')].map((el) => el.value),
+    stacks: panelEl.querySelector('.channel-filter-stacks-value').value.split(',').map((s) => s.trim()).filter(Boolean),
+    containers: panelEl.querySelector('.channel-filter-containers-value').value.split(',').map((s) => s.trim()).filter(Boolean),
+  });
+}
+
+// The add-channel form's filter panel is rendered up front (form starts
+// hidden behind "+ Add a channel" / "Modify", but its DOM still exists)
+// so a first-time channel can be scoped right away, without a save
+// round-trip. Re-assigned by openChannelForm() when editing a channel.
+let readNewChannelFilters = renderFilterPanel(document.getElementById('channel-filters-new'), 'new', {});
+
+// Fields each provider needs to build a URL — used to tell "left
+// everything blank" (edit mode: keep the existing destination) apart
+// from "started filling it in but not enough to build a URL yet" (a
+// real validation error), since the credential-bearing URL is
+// write-only and never sent back to prefill on Modify.
+const PROVIDER_URL_FIELDS = {
+  telegram: ['token', 'chats'],
+  ntfy: ['topic', 'host', 'username', 'password'],
+  slack: ['webhook'],
+  discord: ['webhook'],
+  gotify: ['host', 'token'],
+  custom: ['url'],
+};
+function providerFieldsAllEmpty(provider) {
+  return (PROVIDER_URL_FIELDS[provider] || []).every((f) => fieldValue(provider, f) === '');
+}
+
+const channelFormSection = document.getElementById('channel-form-section');
+const channelFormTitle = document.getElementById('channel-form-title');
+const channelEditHint = document.getElementById('channel-edit-hint');
+const channelSubmitBtn = document.getElementById('channel-submit-btn');
+const channelCancelBtn = document.getElementById('channel-cancel-btn');
+const channelForm = document.getElementById('channel-form');
+const channelNameInput = channelForm.querySelector('input[name="name"]');
+const channelProviderSelect = document.getElementById('channel-provider');
+let editingChannelIndex = null;
+
+// mode is 'add' or 'edit'; index is only used for 'edit'.
+function openChannelForm(mode, index) {
+  channelFormSection.classList.remove('hidden');
+  document.getElementById('channel-form-error').textContent = '';
+  channelForm.reset();
+  if (mode === 'edit') {
+    editingChannelIndex = index;
+    const channel = ({{.ChannelsJSON}})[index] || {};
+    channelFormTitle.textContent = 'Modify channel';
+    channelEditHint.classList.remove('hidden');
+    channelSubmitBtn.textContent = 'Save changes';
+    channelCancelBtn.classList.remove('hidden');
+    channelNameInput.value = channel.name || '';
+    const hasProvider = [...channelProviderSelect.options].some((o) => o.value === channel.provider);
+    channelProviderSelect.value = hasProvider ? channel.provider : 'custom';
+    readNewChannelFilters = renderFilterPanel(document.getElementById('channel-filters-new'), 'new', channel);
+  } else {
+    editingChannelIndex = null;
+    channelFormTitle.textContent = 'Add a channel';
+    channelEditHint.classList.add('hidden');
+    channelSubmitBtn.textContent = 'Add & save';
+    channelCancelBtn.classList.add('hidden');
+    channelProviderSelect.value = 'telegram';
+    readNewChannelFilters = renderFilterPanel(document.getElementById('channel-filters-new'), 'new', {});
+  }
+  showProviderFields();
+}
+function closeChannelForm() {
+  channelFormSection.classList.add('hidden');
+  editingChannelIndex = null;
+}
+
+document.getElementById('channel-add-toggle').addEventListener('click', () => {
+  if (channelFormSection.classList.contains('hidden')) {
+    openChannelForm('add');
+  } else {
+    closeChannelForm();
+  }
+});
+channelCancelBtn.addEventListener('click', closeChannelForm);
+
+channelForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorEl = document.getElementById('channel-form-error');
+  errorEl.classList.remove('text-state-running');
+  const name = new FormData(e.target).get('name');
+  if (!name) {
+    errorEl.textContent = 'Name is required.';
+    return;
+  }
+
+  const provider = channelProviderSelect.value;
+  let url = null;
+  if (editingChannelIndex === null || !providerFieldsAllEmpty(provider)) {
+    try {
+      url = buildChannelURL();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      return;
+    }
+  }
+
+  const { events, stacks, containers } = readNewChannelFilters();
+  const entry = {
+    name,
+    ...(url ? { url } : {}),
+    ...(events.length ? { events } : {}),
+    ...(stacks.length ? { stacks } : {}),
+    ...(containers.length ? { containers } : {}),
+  };
+
+  const current = {{.ChannelsJSON}};
+  if (editingChannelIndex !== null) {
+    current[editingChannelIndex] = entry;
+  } else {
+    current.push(entry);
+  }
+
+  const resp = await fetch('/api/v1/settings/notifications', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(current),
+  });
+  if (resp.ok) {
+    location.reload();
+    return;
+  }
+  const data = await resp.json().catch(() => ({}));
+  errorEl.textContent = (data.error && data.error.message) || 'Failed to save channel.';
+});
+
+document.querySelectorAll('.channel-modify').forEach((btn) => {
+  btn.addEventListener('click', () => openChannelForm('edit', Number(btn.dataset.index)));
+});
+
+// --- Existing channels: Test / Remove / Filters -----------------------------
+document.querySelectorAll('.channel-test').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const statusEl = document.getElementById('channel-action-status');
+    const current = {{.ChannelsJSON}};
+    const name = (current[Number(btn.dataset.index)] || {}).name || '';
+    statusEl.textContent = 'sending test message…';
+    statusEl.classList.remove('text-state-stopped');
+    const result = await testURL('', name);
+    statusEl.textContent = result.ok ? 'test message sent' : result.message;
+    statusEl.classList.toggle('text-state-stopped', !result.ok);
+  });
+});
+
+document.querySelectorAll('.channel-remove').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const current = {{.ChannelsJSON}};
+    current.splice(Number(btn.dataset.index), 1);
+    await fetch('/api/v1/settings/notifications', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(current),
+    });
+    location.reload();
+  });
+});
+
+const channelFilterReaders = {};
+document.querySelectorAll('.channel-filters-toggle').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const idx = btn.dataset.index;
+    const panel = document.getElementById(`channel-filters-${idx}`);
+    if (!channelFilterReaders[idx]) {
+      const current = {{.ChannelsJSON}};
+      const ch = current[Number(idx)] || {};
+      const readFilters = renderFilterPanel(panel, idx, ch);
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.textContent = 'Save filters';
+      saveBtn.className = 'mt-2 rounded-md bg-badge-update text-white text-xs font-medium px-3 py-1.5 hover:opacity-90';
+      const statusSpan = document.createElement('span');
+      statusSpan.className = 'ml-2 text-xs text-gray-500';
+      saveBtn.addEventListener('click', async () => {
+        const { events, stacks, containers } = readFilters();
+        const all = {{.ChannelsJSON}};
+        all[Number(idx)] = {
+          ...all[Number(idx)],
+          events: events.length ? events : undefined,
+          stacks: stacks.length ? stacks : undefined,
+          containers: containers.length ? containers : undefined,
+        };
+        statusSpan.textContent = 'saving…';
+        const resp = await fetch('/api/v1/settings/notifications', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(all),
+        });
+        statusSpan.textContent = resp.ok ? 'saved' : 'failed to save';
+      });
+      panel.appendChild(saveBtn);
+      panel.appendChild(statusSpan);
+      channelFilterReaders[idx] = readFilters;
+    }
+    panel.classList.toggle('hidden');
+  });
+});
+</script>
+{{end}}

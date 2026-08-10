@@ -1,0 +1,50 @@
+{{define "logs-content"}}
+<div class="p-6 max-w-6xl mx-auto">
+  <div class="flex items-baseline justify-between mb-6">
+    <h1 class="text-xl font-semibold">Logs</h1>
+    <div class="text-sm text-gray-500">{{len .Logs}} shown (max {{.Limit}})</div>
+  </div>
+
+  <form method="GET" action="/logs" class="flex flex-wrap gap-2 mb-4">
+    <input type="text" name="container" value="{{.Filter.Container}}" placeholder="container"
+           class="rounded-md bg-gray-900 border border-gray-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-600">
+    <input type="text" name="event" value="{{.Filter.EventType}}" placeholder="event type, e.g. update.failed"
+           class="rounded-md bg-gray-900 border border-gray-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-600">
+    <select name="level" class="rounded-md bg-gray-900 border border-gray-800 px-3 py-1.5 text-sm">
+      <option value="" {{if eq .Filter.Level ""}}selected{{end}}>any level</option>
+      <option value="DEBUG" {{if eq .Filter.Level "DEBUG"}}selected{{end}}>debug</option>
+      <option value="INFO" {{if eq .Filter.Level "INFO"}}selected{{end}}>info</option>
+      <option value="WARN" {{if eq .Filter.Level "WARN"}}selected{{end}}>warn</option>
+      <option value="ERROR" {{if eq .Filter.Level "ERROR"}}selected{{end}}>error</option>
+    </select>
+    <button type="submit" class="rounded-md bg-badge-update text-white text-sm font-medium px-3 py-1.5 hover:opacity-90">Filter</button>
+    {{if or .Filter.Container .Filter.EventType .Filter.Level}}
+    <a href="/logs" class="text-sm text-gray-500 hover:text-gray-300 self-center">clear</a>
+    {{end}}
+    <a href="{{.ExportURL}}" class="ml-auto rounded-md border border-gray-700 text-gray-300 text-sm font-medium px-3 py-1.5 hover:bg-gray-800" title="Download the current filter as JSON (up to 500 events)">Export</a>
+  </form>
+
+  {{if not .Logs}}
+  <div class="rounded-lg border border-dashed border-gray-800 p-10 text-center text-gray-500 text-sm">
+    No events logged yet.
+  </div>
+  {{end}}
+
+  {{if .Logs}}
+  <div class="rounded-lg border border-gray-800 divide-y divide-gray-800 overflow-hidden text-sm">
+    {{range .Logs}}
+    <div class="flex items-start gap-3 px-4 py-2.5 bg-gray-900/40">
+      <span class="text-gray-500 shrink-0 tabular-nums">{{.Timestamp}}</span>
+      <span class="shrink-0 text-xs font-medium px-1.5 py-0.5 rounded
+        {{if eq .Level "ERROR"}}bg-state-stopped/15 text-state-stopped
+        {{else if eq .Level "WARN"}}bg-state-warning/15 text-state-warning
+        {{else}}bg-gray-800 text-gray-400{{end}}">{{.Level}}</span>
+      <span class="shrink-0 text-gray-400 font-mono text-xs">{{.Event}}</span>
+      {{if .Container}}<span class="shrink-0 text-badge-update">{{.Container}}</span>{{end}}
+      <span class="text-gray-200 min-w-0 truncate">{{.Message}}</span>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}

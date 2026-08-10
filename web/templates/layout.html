@@ -1,0 +1,58 @@
+{{define "layout"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script nonce="{{.CSPNonce}}" src="/static/theme.js"></script>
+  <script nonce="{{.CSPNonce}}" src="/static/sidebar.js"></script>
+  <script nonce="{{.CSPNonce}}" src="/static/csrf.js"></script>
+  <script nonce="{{.CSPNonce}}" src="/static/stacks.js" defer></script>
+  <title>DoUpRo{{if .Title}} · {{.Title}}{{end}}</title>
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="/static/favicon-96x96.png" sizes="96x96">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="bg-gray-950 text-gray-100 h-screen flex antialiased overflow-hidden">
+  <button type="button" id="sidebar-show-btn" title="Show sidebar"
+          class="fixed top-3 left-3 z-20 items-center justify-center rounded-md border border-gray-800 bg-gray-900/80 text-gray-500 hover:text-gray-200 hover:bg-gray-800 px-2 py-1 text-xs leading-none">»</button>
+  <aside id="sidebar" class="w-56 shrink-0 border-r border-gray-800 bg-gray-900/60 flex flex-col h-full">
+    <div class="px-4 py-4 flex items-center gap-2 text-lg font-semibold tracking-tight border-b border-gray-800">
+      <img src="/static/logo.png" alt="" class="h-6 w-6 rounded shrink-0">
+      <span class="text-brand flex-1">DoUpRo</span>
+      <button type="button" id="sidebar-hide-btn" title="Hide sidebar" class="shrink-0 text-xs leading-none text-gray-600 hover:text-gray-300">«</button>
+    </div>
+    <nav class="flex-1 py-2 space-y-0.5">
+      {{range .Nav}}
+        {{if .Enabled}}
+        <a href="{{.Href}}"
+           class="flex items-center justify-between px-4 py-2 mx-2 text-sm rounded-md {{if .Active}}bg-gray-800 text-nav-active{{else}}text-gray-400 hover:bg-gray-800 hover:text-gray-100{{end}}">
+          <span>{{.Label}}</span>
+        </a>
+        {{else}}
+        <div class="flex items-center justify-between px-4 py-2 mx-2 text-sm text-gray-600 cursor-not-allowed select-none">
+          <span>{{.Label}}</span>
+          <span class="text-[10px] uppercase tracking-wide bg-gray-800/80 text-gray-500 px-1.5 py-0.5 rounded">soon</span>
+        </div>
+        {{end}}
+      {{end}}
+    </nav>
+    <div class="px-4 py-3 text-xs text-gray-600 border-t border-gray-800 space-y-2">
+      <div>doupro {{.Version}}</div>
+      <div class="flex items-center justify-between">
+        <button type="button" id="theme-toggle" class="text-gray-500 hover:text-gray-300">
+          <span id="theme-toggle-icon">🌙</span>
+        </button>
+        <form method="POST" action="/api/v1/auth/logout">
+          <button type="submit" class="text-gray-500 hover:text-gray-300">Log out</button>
+        </form>
+      </div>
+    </div>
+  </aside>
+  <main class="flex-1 min-w-0 h-full overflow-y-auto overflow-x-auto">
+    {{.Body}}
+  </main>
+</body>
+</html>
+{{end}}

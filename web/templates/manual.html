@@ -1,0 +1,22 @@
+{{define "manual-content"}}
+<div class="flex">
+  <nav class="w-48 shrink-0 border-r border-gray-800 min-h-full py-6 px-3 space-y-0.5">
+    {{$slug := .ManualSlug}}
+    {{range .ManualPages}}
+    <a href="/manual{{if .Slug}}/{{.Slug}}{{end}}"
+       class="block px-3 py-1.5 text-sm rounded-md {{if eq .Slug $slug}}bg-gray-800 text-gray-950{{else}}text-gray-400 hover:bg-gray-800 hover:text-gray-100{{end}}">
+      {{.Title}}
+    </a>
+    {{end}}
+    <div class="my-2 border-t border-gray-800"></div>
+    <a href="/swagger" class="block px-3 py-1.5 text-sm rounded-md text-gray-400 hover:bg-gray-800 hover:text-gray-100">
+      API reference (Swagger)
+    </a>
+  </nav>
+  <div class="flex-1 min-w-0 p-6 max-w-3xl">
+    <div class="manual-content">
+      {{.ManualHTML}}
+    </div>
+  </div>
+</div>
+{{end}}

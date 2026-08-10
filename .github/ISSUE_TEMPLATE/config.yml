@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/arnaudcharles/DoUpRo/security/advisories/new
+    about: Please report vulnerabilities privately — do not open a public issue.
+  - name: Questions & discussion
+    url: https://github.com/arnaudcharles/DoUpRo/discussions
+    about: Usage questions and general discussion go here, not the issue tracker.

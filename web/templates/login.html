@@ -1,0 +1,58 @@
+{{define "login-page"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script nonce="{{.CSPNonce}}" src="/static/theme.js"></script>
+  <script nonce="{{.CSPNonce}}" src="/static/csrf.js"></script>
+  <title>DoUpRo · Sign in</title>
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="/static/favicon-96x96.png" sizes="96x96">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen flex items-center justify-center antialiased">
+  <div class="w-full max-w-sm px-4">
+    <div class="flex items-center justify-center gap-2 mb-6 text-xl font-semibold tracking-tight">
+      <img src="/static/logo.png" alt="" class="h-7 w-7 rounded">
+      <span class="text-brand">DoUpRo</span>
+    </div>
+
+    {{if .Error}}
+    <div class="mb-4 rounded-md bg-state-stopped/15 text-state-stopped text-sm px-3 py-2">
+      Invalid username or password.
+    </div>
+    {{end}}
+
+    <form method="POST" action="/api/v1/auth/login" class="space-y-3 bg-gray-900/60 border border-gray-800 rounded-lg p-6">
+      <div>
+        <label class="block text-xs text-gray-400 mb-1" for="username">Username</label>
+        <input id="username" name="username" type="text" autocomplete="username" required
+               class="w-full rounded-md bg-gray-950 border border-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-600">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1" for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required
+               class="w-full rounded-md bg-gray-950 border border-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-600">
+      </div>
+      <button type="submit" class="w-full rounded-md bg-badge-update text-white text-sm font-medium py-2 hover:opacity-90 transition-opacity">
+        Sign in
+      </button>
+    </form>
+
+    {{if .OIDCEnabled}}
+    <div class="flex items-center gap-3 my-4 text-xs text-gray-500">
+      <div class="flex-1 border-t border-gray-800"></div>
+      or
+      <div class="flex-1 border-t border-gray-800"></div>
+    </div>
+    <a href="/api/v1/auth/oidc/login"
+       class="block w-full text-center rounded-md border border-gray-700 text-gray-200 text-sm font-medium py-2 hover:bg-gray-800 transition-colors">
+      Sign in with SSO
+    </a>
+    {{end}}
+  </div>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,154 @@
+{{define "containers-content"}}
+<div class="p-6 max-w-6xl mx-auto">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-xl font-semibold">Containers</h1>
+    <div class="flex items-center gap-3">
+      {{if .CanWriteContainers}}
+      <button type="button" id="update-all-btn" class="update-all-btn text-xs px-2.5 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800" title="Update every container with an update available, except exclusions">Update all</button>
+      {{end}}
+      <div class="text-sm text-gray-500">{{.Total}} tracked</div>
+    </div>
+  </div>
+
+  {{if .Error}}
+  <div class="mb-4 rounded-md bg-state-stopped/15 text-state-stopped text-sm px-3 py-2">
+    {{.Error}}
+  </div>
+  {{end}}
+
+  {{if not .Stacks}}
+  <div class="rounded-lg border border-dashed border-gray-800 p-10 text-center text-gray-500 text-sm">
+    No containers discovered yet. DoUpRo checks the Docker socket at startup —
+    see docs/containers.md for how periodic checking will work once the
+    scheduler lands.
+  </div>
+  {{end}}
+
+  {{range .Stacks}}
+  <section class="mb-8" data-stack="{{.Name}}">
+    <div class="flex items-center justify-between mb-2">
+      <button type="button" class="stack-toggle flex items-center gap-1.5 text-xs uppercase tracking-wide text-gray-500 px-1 hover:text-gray-300">
+        <svg class="stack-chevron w-3 h-3 shrink-0 rotate-90 transition-transform" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path fill-rule="evenodd" d="M6 6l8 4-8 4V6z" clip-rule="evenodd" />
+        </svg>
+        <span>{{.Name}}</span>
+      </button>
+      {{if $.CanWriteContainers}}
+      <button type="button" data-stack-param="{{.StackParam}}" class="stack-update-all-btn text-xs px-2 py-0.5 rounded border border-state-running text-state-running hover:bg-state-running/10" title="Update every container in this stack with an update available, except exclusions">Update all</button>
+      {{end}}
+    </div>
+    <div class="stack-body rounded-lg border border-gray-800 divide-y divide-gray-800 overflow-hidden">
+      {{range .Containers}}
+      <div class="flex items-center gap-4 px-4 py-3 bg-gray-900/40 {{if .Excluded}}opacity-50{{end}}">
+        <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full shrink-0
+          {{if eq .StateClass "running"}}bg-state-running/15 text-state-running
+          {{else if eq .StateClass "created"}}bg-state-created/15 text-state-created
+          {{else if eq .StateClass "paused"}}bg-state-pausedbg text-state-warning
+          {{else if or (eq .StateClass "warning") (eq .StateClass "restarting") (eq .StateClass "removing")}}bg-state-warning/15 text-state-warning
+          {{else}}bg-state-stopped/15 text-state-stopped{{end}}">
+          {{if eq .StateClass "dead"}}
+          <span class="text-[10px] leading-none" aria-hidden="true">💀</span>
+          {{else}}
+          <span class="w-1.5 h-1.5 rounded-full
+            {{if eq .StateClass "running"}}bg-state-running
+            {{else if eq .StateClass "created"}}bg-state-created
+            {{else if or (eq .StateClass "paused") (eq .StateClass "warning") (eq .StateClass "restarting") (eq .StateClass "removing")}}bg-state-warning
+            {{else}}bg-state-stopped{{end}}"></span>
+          {{end}}
+          {{.StateLabel}}
+        </span>
+
+        <div class="min-w-0 flex-1">
+          <div class="font-medium truncate">
+            {{.Name}}
+            {{if .Excluded}}<span class="ml-1 text-[10px] uppercase tracking-wide text-gray-500">excluded</span>{{end}}
+          </div>
+          <div class="text-[11px] text-gray-500 truncate mt-0.5" title="image defined in compose">{{.DefinedImage}}</div>
+        </div>
+
+        <div class="w-80 min-w-0 shrink-0 flex items-center gap-1.5 flex-wrap justify-end">
+          <span class="text-xs px-2 py-1 rounded truncate max-w-[10rem] {{if .VersionResolved}}bg-chip-current text-chip-current-text{{else}}bg-gray-800 text-gray-500 border border-gray-700{{end}}"
+                title="{{if .Excluded}}This version isn't verified because it's excluded in Settings{{else if .VersionResolved}}Exact running version resolved from immutable registry metadata{{else}}Source image tag{{if .ResolvedDigestHint}} (running digest: {{.ResolvedDigestHint}}){{end}}{{end}}">
+            {{.ResolvedVersion}}
+          </span>
+          {{if and .UpdateAvailable $.CanWriteContainers}}
+          <span class="text-xs px-2 py-1 rounded bg-badge-available/15 text-badge-available whitespace-nowrap" title="{{if eq .UpdateKind "rebuild"}}The registry tag now points to a different image digest with the same resolved application version{{else}}A newer image is available from the registry{{end}}">
+            {{if eq .UpdateKind "rebuild"}}Image rebuild available{{else}}Update available{{if .AvailableVersion}}: {{.AvailableVersion}}{{end}}{{end}}
+          </span>
+          {{end}}
+          {{if .RollbackWatched}}
+          <span class="text-xs px-2 py-1 rounded bg-state-warning/10 text-state-warning whitespace-nowrap" title="Watching for crashes after the last update — {{.CrashThreshold}} within the window triggers an automatic rollback. Crash-by-crash progress is in the Logs page, not here.">Rollback protection checking</span>
+          {{end}}
+        </div>
+
+        <div class="w-56 shrink-0 flex items-center gap-1.5 justify-end">
+          {{if .Operation}}
+          <span class="text-xs px-2 py-1 rounded border border-blue-400/40 text-blue-300 capitalize" title="Another destructive action is blocked until this operation finishes">{{.Operation}} in progress</span>
+          {{else}}
+          {{if .UpdateAvailable}}
+          <form method="POST" action="/api/v1/containers/{{.Name}}/update">
+            <button type="submit" class="text-xs px-2 py-1 rounded bg-badge-update text-white hover:opacity-90">Update</button>
+          </form>
+          {{end}}
+          {{if and .HasPrevious $.CanWriteContainers}}
+          <form method="POST" action="/api/v1/containers/{{.Name}}/rollback">
+            <button type="submit" title="Switches to {{.RollbackHint}} — clicking again later undoes this, same as Update" class="text-xs px-2 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800">Rollback</button>
+          </form>
+          {{else if $.CanWriteContainers}}
+          <button type="button" disabled title="No previous version on record for this container yet" class="text-xs px-2 py-1 rounded border border-gray-800 text-gray-600 cursor-not-allowed">Rollback</button>
+          {{end}}
+          {{if $.CanManageSchedules}}<a href="/schedule?container={{.Name}}" class="text-xs px-2 py-1 rounded border border-badge-scheduled/40 text-badge-scheduled hover:bg-badge-scheduled/15">Schedule</a>{{end}}
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </section>
+  {{end}}
+</div>
+
+<script nonce="{{.CSPNonce}}">
+// "Update all" (global and per-stack): kicks off POST
+// /api/v1/containers/update-all[?stack=X], which queues every eligible
+// container (has an update available, not excluded) and processes them in
+// the background — see internal/api's handleUpdateAllContainers. The
+// response only reports how many were queued, not the outcome, so this
+// just shows that count and reloads; per-container progress then shows up
+// the same way a single Update's "in progress" state already does.
+async function triggerUpdateAll(button, stackParam) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = '…';
+  try {
+    const q = stackParam ? '?stack=' + encodeURIComponent(stackParam) : '';
+    const resp = await fetch('/api/v1/containers/update-all' + q, {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      throw new Error((body.error && body.error.message) || 'update-all failed');
+    }
+    if (!body.queued) {
+      button.textContent = 'nothing to update';
+      setTimeout(() => { button.disabled = false; button.textContent = original; }, 1500);
+      return;
+    }
+    button.textContent = body.queued + ' queued';
+    setTimeout(() => { window.location.reload(); }, 800);
+  } catch (e) {
+    button.disabled = false;
+    button.textContent = original;
+    alert('Error: ' + e.message);
+  }
+}
+
+const updateAllBtn = document.getElementById('update-all-btn');
+if (updateAllBtn) {
+  updateAllBtn.addEventListener('click', () => triggerUpdateAll(updateAllBtn, ''));
+}
+document.querySelectorAll('.stack-update-all-btn').forEach((btn) => {
+  btn.addEventListener('click', () => triggerUpdateAll(btn, btn.dataset.stackParam));
+});
+</script>
+{{end}}

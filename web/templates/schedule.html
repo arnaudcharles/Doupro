@@ -1,0 +1,255 @@
+{{define "schedule-content"}}
+<div class="p-6 max-w-5xl mx-auto">
+  <div class="flex items-baseline justify-between mb-6">
+    <h1 class="text-xl font-semibold">Schedule</h1>
+    <div class="text-sm text-gray-500">{{len .Schedules}} schedule(s)</div>
+  </div>
+
+  <section class="mb-8 rounded-lg border border-gray-800 p-4 bg-gray-900/40">
+    <h2 class="text-xs uppercase tracking-wide text-brand mb-3">New schedule</h2>
+
+    <form id="schedule-form" class="space-y-3 text-sm">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">Type</label>
+          <select name="type" id="schedule-type" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+            <option value="once">once — apply at a specific time</option>
+            <option value="cron">cron — recurring, on a schedule</option>
+            <option value="relative">relative — recurring, reactive to detection</option>
+          </select>
+          <p id="schedule-type-help" class="mt-1 text-xs text-gray-500"></p>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">Target</label>
+          <select name="target_kind" id="schedule-target-kind" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+            <option value="container">a single container</option>
+            <option value="stack">a whole stack</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div>
+          <label id="schedule-name-label" class="block text-xs text-gray-400 mb-1">Container name</label>
+          <input name="name" id="schedule-name" autocomplete="off" value="{{.PrefillContainer}}" placeholder="e.g. adguard-home" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+        </div>
+        <div data-for="once">
+          <label class="block text-xs text-gray-400 mb-1">Run at</label>
+          <input name="run_at" id="schedule-run-at" type="datetime-local" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+        </div>
+      </div>
+
+      <div data-for="cron">
+        <label class="block text-xs text-gray-400 mb-1">Cron expression</label>
+        <input name="cron" placeholder="0 8 * * MON  (every Monday at 8am)" class="w-full md:w-96 rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5 font-mono">
+      </div>
+
+      <div data-for="relative" class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">Policy</label>
+          <select name="policy" id="schedule-policy" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+            <option value="immediate">immediate — apply as soon as an update is detected</option>
+            <option value="delayed">delayed — wait after first detection</option>
+          </select>
+        </div>
+        <div data-for-policy="delayed">
+          <label class="block text-xs text-gray-400 mb-1">Wait after detection</label>
+          <input name="after" placeholder="e.g. 24h" class="w-full rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+        </div>
+      </div>
+
+      <div data-for="cron relative">
+        <label class="block text-xs text-gray-400 mb-1">Allowed version scope</label>
+        <select name="semver" class="w-full md:w-96 rounded-md bg-gray-950 border border-gray-800 px-2 py-1.5">
+          <option value="patch">patch only — stay on the current major and minor</option>
+          <option value="minor">minor — stay on the current major</option>
+          <option value="major">major — allow any newer stable version</option>
+        </select>
+      </div>
+
+      <button type="submit" class="rounded-md bg-badge-update text-white text-sm font-medium px-4 py-1.5 hover:opacity-90">
+        Create
+      </button>
+    </form>
+    <p id="schedule-form-error" class="mt-2 text-sm text-state-stopped"></p>
+  </section>
+
+  {{if not .Schedules}}
+  <div class="rounded-lg border border-dashed border-gray-800 p-10 text-center text-gray-500 text-sm">
+    No schedules yet.
+  </div>
+  {{end}}
+
+  {{if .ContainerSchedules}}
+  <section class="mb-8">
+    <h2 class="text-xs uppercase tracking-wide text-brand mb-2 px-1">Individual schedules ({{len .ContainerSchedules}})</h2>
+    <div class="rounded-lg border border-gray-800 divide-y divide-gray-800 overflow-hidden text-sm">
+      {{range .ContainerSchedules}}
+      <div class="flex items-center gap-3 px-4 py-2.5 {{if .Completed}}bg-gray-900/20 text-gray-600{{else}}bg-gray-900/40{{end}}">
+        <span class="shrink-0 text-xs font-medium px-1.5 py-0.5 rounded {{if .Completed}}bg-gray-800 text-gray-600{{else}}bg-badge-scheduled/15 text-badge-scheduled{{end}}">{{.Type}}</span>
+        <span class="min-w-0 flex-1 truncate">{{.Target}}</span>
+        <span class="text-gray-500 shrink-0">{{.When}}</span>
+        {{if .Inactive}}
+        <span class="shrink-0 text-xs px-1.5 py-0.5 rounded bg-state-warning/15 text-state-warning" title="stored but not executed yet">not active</span>
+        {{end}}
+        {{if .Completed}}
+        <span class="shrink-0 text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-600">completed</span>
+        {{else}}
+        <button data-id="{{.ID}}" data-enabled="{{.Enabled}}"
+                class="schedule-toggle shrink-0 hover:underline {{if .Enabled}}text-state-running{{else}}text-gray-600{{end}}"
+                title="Click to {{if .Enabled}}disable{{else}}enable{{end}} this schedule">{{if .Enabled}}enabled{{else}}disabled{{end}}</button>
+        {{end}}
+        <button data-id="{{.ID}}" class="schedule-delete shrink-0 text-xs px-2 py-1 rounded border {{if .Completed}}border-badge-available text-badge-available hover:bg-badge-available/15{{else}}border-gray-700 text-gray-300 hover:bg-gray-800{{end}}">{{if .Completed}}Delete{{else}}Cancel{{end}}</button>
+      </div>
+      {{end}}
+    </div>
+  </section>
+  {{end}}
+
+  {{if .RecurringSchedules}}
+  <section class="mb-8">
+    <h2 class="text-xs uppercase tracking-wide text-brand mb-2 px-1">Recurring policies ({{len .RecurringSchedules}})</h2>
+    <div class="rounded-lg border border-gray-800 divide-y divide-gray-800 overflow-hidden text-sm">
+      {{range .RecurringSchedules}}
+      <div class="flex items-center gap-3 px-4 py-2.5 bg-gray-900/40">
+        <span class="shrink-0 text-xs font-medium px-1.5 py-0.5 rounded bg-badge-scheduled/15 text-badge-scheduled">{{.Type}}</span>
+        <span class="min-w-0 flex-1 truncate">{{.Target}}</span>
+        <span class="text-gray-500 shrink-0">{{.When}}</span>
+        {{if .Inactive}}
+        <span class="shrink-0 text-xs px-1.5 py-0.5 rounded bg-state-warning/15 text-state-warning" title="stored but not executed yet">not active</span>
+        {{end}}
+        <button data-id="{{.ID}}" data-enabled="{{.Enabled}}"
+                class="schedule-toggle shrink-0 hover:underline {{if .Enabled}}text-state-running{{else}}text-gray-600{{end}}"
+                title="Click to {{if .Enabled}}disable{{else}}enable{{end}} this schedule">{{if .Enabled}}enabled{{else}}disabled{{end}}</button>
+        <button data-id="{{.ID}}" class="schedule-delete shrink-0 text-xs px-2 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800">Cancel</button>
+      </div>
+      {{end}}
+    </div>
+  </section>
+  {{end}}
+</div>
+
+<script nonce="{{.CSPNonce}}" src="/static/combobox.js"></script>
+<script nonce="{{.CSPNonce}}">
+const typeHelp = {
+  once: 'Pins the version available right now and applies it once, at the time you pick — even if a newer version shows up before then.',
+  cron: 'Applies to the whole stack, on a repeating schedule. Whatever has an update available when it fires gets updated.',
+  relative: 'Applies to the whole stack, reacting to detection rather than a fixed time.',
+};
+
+// Backs the "Name" field's searchable dropdown (see combobox.js) with the
+// containers DoUpRo already knows about, so picking a target doesn't
+// require retyping a name exactly.
+let knownContainers = [];
+let knownStacks = [];
+(async function loadNameOptions() {
+  try {
+    const resp = await fetch('/api/v1/containers');
+    if (!resp.ok) return;
+    const containers = await resp.json();
+    knownContainers = [...new Set(containers.map((c) => c.name))].sort();
+    knownStacks = [...new Set(containers.map((c) => c.stack).filter(Boolean))].sort();
+  } catch (e) {
+    // Non-fatal — the field still works as a plain text input.
+  }
+})();
+
+attachCombobox(document.getElementById('schedule-name'), {
+  getOptions: () => (document.getElementById('schedule-target-kind').value === 'stack' ? knownStacks : knownContainers),
+});
+
+function updateVisibility() {
+  const type = document.getElementById('schedule-type').value;
+  document.querySelectorAll('[data-for]').forEach((el) => {
+    el.classList.toggle('hidden', !el.dataset.for.split(' ').includes(type));
+  });
+
+  const policy = document.getElementById('schedule-policy').value;
+  document.querySelectorAll('[data-for-policy]').forEach((el) => {
+    el.classList.toggle('hidden', el.dataset.forPolicy !== policy);
+  });
+
+  const targetKind = document.getElementById('schedule-target-kind').value;
+  const nameLabel = document.getElementById('schedule-name-label');
+  const nameInput = document.getElementById('schedule-name');
+  if (targetKind === 'stack') {
+    nameLabel.textContent = 'Stack name';
+    nameInput.placeholder = 'e.g. media (your Compose project name)';
+  } else {
+    nameLabel.textContent = 'Container name';
+    nameInput.placeholder = 'e.g. adguard-home';
+  }
+
+  document.getElementById('schedule-type-help').textContent = typeHelp[type] || '';
+}
+document.getElementById('schedule-type').addEventListener('change', updateVisibility);
+document.getElementById('schedule-target-kind').addEventListener('change', updateVisibility);
+document.getElementById('schedule-policy').addEventListener('change', updateVisibility);
+updateVisibility();
+
+// Client-side floor to catch obviously-past dates early; the server is the
+// real gate (run_at must be in the future — see internal/api/schedules.go).
+(function () {
+  const now = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+  document.getElementById('schedule-run-at').min = now.toISOString().slice(0, 16);
+})();
+
+document.getElementById('schedule-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const type = f.get('type');
+  const targetKind = f.get('target_kind');
+  const name = f.get('name');
+  const body = { type, notify: true };
+
+  if (targetKind === 'stack') {
+    body.stack = name;
+  } else {
+    body.container = name;
+  }
+
+  if (type === 'once') {
+    if (f.get('run_at')) body.run_at = new Date(f.get('run_at')).toISOString();
+  } else if (type === 'cron') {
+    body.cron = f.get('cron');
+    body.semver = f.get('semver');
+  } else if (type === 'relative') {
+    body.policy = f.get('policy');
+    body.semver = f.get('semver');
+    if (f.get('policy') === 'delayed') body.after = f.get('after');
+  }
+
+  const resp = await fetch('/api/v1/schedules', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (resp.ok) {
+    location.reload();
+    return;
+  }
+  const data = await resp.json().catch(() => ({}));
+  document.getElementById('schedule-form-error').textContent =
+    (data.error && data.error.message) || 'Failed to create schedule.';
+});
+
+document.querySelectorAll('.schedule-delete').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    await fetch('/api/v1/schedules/' + btn.dataset.id, { method: 'DELETE' });
+    location.reload();
+  });
+});
+
+document.querySelectorAll('.schedule-toggle').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const enabled = btn.dataset.enabled === 'true';
+    await fetch('/api/v1/schedules/' + btn.dataset.id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: !enabled }),
+    });
+    location.reload();
+  });
+});
+</script>
+{{end}}
