@@ -1,0 +1,30 @@
+repos:
+- repo: local
+  hooks:
+    - id: go-fmt
+      name: gofmt (system)
+      entry: gofmt -s -w
+      language: system
+      types: [go]
+    - id: go-imports
+      name: goimports (system)
+      entry: goimports -w
+      language: system
+      types: [go]
+
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.6.0
+  hooks:
+    - id: trailing-whitespace
+    - id: end-of-file-fixer
+
+- repo: local
+  hooks:
+    - id: golangci-lint
+      name: golangci-lint (system)
+      entry: golangci-lint
+      language: system
+      # Do not pass filenames: golangci-lint's typechecker cannot analyse files from multiple directories at once (pre-commit may pass many filenames spanning packages). Run on the whole repo instead.
+      pass_filenames: false
+      args: ["run", "--timeout=5m", "--concurrency=1"]
+      types: [go]

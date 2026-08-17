@@ -90,6 +90,23 @@ func selfUpdateHelperCmd() *cobra.Command {
 // the scheduler's background loop (periodic registry checks, one-off and
 // recurring schedule execution), until it receives SIGINT/SIGTERM, then
 // shuts down gracefully.
+// validateDockerSocketConfig refuses a tcp:// DOUPRO_DOCKER_SOCKET unless
+// allowInsecureTCP is set — a plain tcp:// Docker socket is equivalent to
+// unauthenticated remote root on the target host to anyone who can reach
+// that port. See CLAUDE.md: never weaken the default security posture to
+// make a feature simpler — flag it instead. allowInsecureTCP
+// (DOUPRO_ALLOW_INSECURE_DOCKER_TCP) is the explicit, conscious opt-in for
+// a genuinely trusted tcp:// endpoint (a loopback/private-network
+// socket-proxy, for instance).
+func validateDockerSocketConfig(socketPath string, allowInsecureTCP bool) error {
+	if docker.IsTCPSocket(socketPath) && !allowInsecureTCP {
+		return fmt.Errorf("DOUPRO_DOCKER_SOCKET is a tcp:// URL, which is unencrypted and unauthenticated by default — " +
+			"set DOUPRO_ALLOW_INSECURE_DOCKER_TCP=true only if this endpoint is genuinely trusted " +
+			"(loopback-only, private network, or itself TLS-terminated — see .env.example and SECURITY.md)")
+	}
+	return nil
+}
+
 func serve() error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -97,6 +114,9 @@ func serve() error {
 	}
 	if (cfg.DockerHubUsername == "") != (cfg.DockerHubPassword == "") {
 		return fmt.Errorf("only one of DOUPRO_DOCKERHUB_USERNAME/DOUPRO_DOCKERHUB_PASSWORD is set — set both, or leave both unset to keep Docker Hub requests anonymous (see .env.example)")
+	}
+	if err := validateDockerSocketConfig(cfg.SocketPath, cfg.AllowInsecureTCP); err != nil {
+		return err
 	}
 	if err := tlsconfig.ConfigureDefaultTransport(cfg.ExtraCACert); err != nil {
 		return fmt.Errorf("configure outbound TLS trust: %w", err)
@@ -180,6 +200,16 @@ func serve() error {
 		return fmt.Errorf("create docker client: %w", err)
 	}
 	defer dockerClient.Close() //nolint:errcheck // best-effort on daemon shutdown
+
+	// Reaching here with a tcp:// socket means the operator explicitly set
+	// DOUPRO_ALLOW_INSECURE_DOCKER_TCP=true (see the bootstrap check
+	// above) — still worth a startup log line so it shows up in
+	// docker logs / the Logs page for anyone auditing the deployment later.
+	if docker.IsTCPSocket(cfg.SocketPath) {
+		logger.Emit(ctx, events.Event{Level: events.LevelWarn, Type: "security.docker_socket_tcp", Actor: events.ActorSystem,
+			Message: "DOUPRO_DOCKER_SOCKET is a tcp:// URL and DOUPRO_ALLOW_INSECURE_DOCKER_TCP=true — ensure this endpoint is genuinely trusted (loopback/private network, or itself TLS-terminated); see SECURITY.md",
+		})
+	}
 	notif := notifier.New(st, logger)
 	upd := updater.New(dockerClient, st, logger, notif)
 	crashMonitor := crashloop.New(dockerClient, st, upd, logger)

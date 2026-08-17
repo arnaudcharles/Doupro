@@ -88,6 +88,16 @@ These apply to every contributor working in this repo.
 - The container itself must run as a **non-root user** wherever the socket
   group permissions allow it, and must not request more Linux capabilities
   than required (`cap_drop: ALL` plus only what's proven necessary).
+- `DOUPRO_DOCKER_SOCKET` also accepts a `tcp://host:port` URL (for a
+  socket-proxy or a remote Docker host), but the daemon **refuses to start**
+  with one unless `DOUPRO_ALLOW_INSECURE_DOCKER_TCP=true` is explicitly
+  set — a plain, unauthenticated `tcp://` Docker API is equivalent to
+  giving remote root access to the target host to anyone who can reach
+  that port. This flag is a conscious opt-in, never a default; only set it
+  when the endpoint is genuinely trusted (loopback-only, a private/internal
+  network with no other tenants, or itself TLS-terminated). See
+  `.env.example` and `internal/config`/`cmd/doupro/cmd_serve.go`'s
+  `validateDockerSocketConfig`.
 
 ### Web UI / API
 

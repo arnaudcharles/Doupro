@@ -77,9 +77,47 @@ against a real homelab, not just unit tests. Not yet re-tagged.
   `GET /api/v1/containers/{id}` (detail) and
   `POST /api/v1/containers/{id}/check` (force an immediate check).
 - Bulk "Update all" — global and per-stack.
+- **CI/pre-push validation**: `scripts/validate.sh` runs the full check
+  set (format, vet, lint, tests, Docker image build, container smoke test)
+  in one command; CI gained a Docker container smoke test (build, start,
+  `/health`, `HEALTHCHECK`) and a `docker compose config` validation job,
+  on top of the existing build/test/lint jobs.
+- An automated test asserts every route registered in the API matches
+  what `openapi.json` documents, in both directions — no undocumented
+  endpoint, no documented endpoint that doesn't exist. Caught and fixed
+  three undocumented routes (`/api/v1/openapi.json`, the two OIDC routes).
+- CLI end-to-end tests (`cmd/doupro`) exercise the built binary against a
+  real API server for `containers`, `logs`, `settings`, `schedule`,
+  `stats`, and `users`.
+- Swagger UI and the OpenAPI document now have smoke tests: `/swagger`
+  requires auth, `/api/v1/openapi.json` is a valid, unauthenticated OpenAPI
+  3.x document.
+
+### Security
+
+- `DOUPRO_DOCKER_SOCKET` accepting a `tcp://` URL (see Fixed, below) could
+  previously start with an unencrypted, unauthenticated connection to a
+  remote Docker API — equivalent to giving remote root access on that host
+  to anyone who can reach the port. The daemon now refuses to start on a
+  `tcp://` socket unless the new `DOUPRO_ALLOW_INSECURE_DOCKER_TCP=true`
+  is explicitly set — a conscious opt-in for a genuinely trusted endpoint
+  (loopback-only, private network, or itself TLS-terminated), never a
+  default. See `.env.example` and `SECURITY.md`.
+- That same `tcp://` check was case- and whitespace-sensitive
+  (`TCP://host:port`, or a stray leading space from a copy-pasted `.env`
+  line, both bypassed it silently). Detection is now case/whitespace
+  -insensitive and centralized in `internal/docker.IsTCPSocket`, the one
+  place both the socket client and the startup gate call, so they can't
+  drift apart again.
 
 ### Fixed
 
+- `DOUPRO_DOCKER_SOCKET` set to a `tcp://host:port` URL (e.g. pointing at
+  a `docker-socket-proxy`) was silently mangled into the invalid host
+  `unix://tcp://host:port`, failing with a misleading "permission denied"
+  instead of connecting — raw Unix socket paths and `unix://` URLs were
+  unaffected. `tcp://` and `unix://` URLs are now used as-is; only a
+  schemeless path still gets the `unix://` prefix (issue #10).
 - A real deadlock: `ListUsers`/`ListAPIKeys` ran a nested query while
   their own result cursor was still open, against a store capped to one
   SQLite connection — any visit to Settings hung indefinitely.
@@ -148,4 +186,3 @@ tests) — not a scaffold anymore.
   executed by the scheduler.
 - No automatic rollback on crash-loop yet (needs a Docker event stream
   watcher — only manual Update/Rollback exist).
-
