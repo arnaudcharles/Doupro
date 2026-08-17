@@ -222,24 +222,79 @@ func TestClientList(t *testing.T) {
 	}
 }
 
-func TestNewAcceptsTCPAndUnixForms(t *testing.T) {
-	// tcp:// form
-	c, err := New("tcp://127.0.0.1:23750", "", "")
-	if err != nil {
-		t.Fatalf("New(tcp) = %v, want nil", err)
+// TestNewBuildsTheCorrectDaemonHost guards issue #10: New used to
+// unconditionally prefix "unix://" onto whatever DOUPRO_DOCKER_SOCKET held,
+// so a socket-proxy address like "tcp://172.17.0.1:2375" (the documented,
+// more secure alternative to mounting /var/run/docker.sock directly — see
+// SECURITY.md) became the malformed host "unix://tcp://172.17.0.1:2375",
+// which the underlying Docker client rejected with a misleading
+// "permission denied" instead of actually attempting a TCP connection.
+//
+// SocketPath() alone can't catch a regression here — it just echoes back
+// whatever string New() was called with, untransformed. This asserts
+// against DaemonHost(), the string actually handed to
+// dockerclient.WithHost() and used to dial, which is the one place the
+// original bug was visible.
+func TestNewBuildsTheCorrectDaemonHost(t *testing.T) {
+	cases := []struct {
+		name       string
+		socketPath string
+		wantHost   string
+	}{
+		{"raw unix path gets a unix:// prefix", "/var/run/docker.sock", "unix:///var/run/docker.sock"},
+		{"already-prefixed unix:// URL is used as-is", "unix:///var/run/docker.sock", "unix:///var/run/docker.sock"},
+		{"tcp:// socket-proxy URL is used as-is, not double-prefixed", "tcp://172.17.0.1:2375", "tcp://172.17.0.1:2375"},
+		{"uppercase TCP:// scheme is also recognized, not double-prefixed", "TCP://172.17.0.1:2375", "TCP://172.17.0.1:2375"},
 	}
-	if c.SocketPath() != "tcp://127.0.0.1:23750" {
-		t.Fatalf("socketPath = %q, want %q", c.SocketPath(), "tcp://127.0.0.1:23750")
-	}
-	_ = c.Close()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := New(tc.socketPath, "", "")
+			if err != nil {
+				t.Fatalf("New(%q) = %v, want nil", tc.socketPath, err)
+			}
+			defer func() { _ = c.Close() }()
 
-	// plain unix socket path (no scheme) should be accepted too
-	c2, err := New("/var/run/docker.sock", "", "")
-	if err != nil {
-		t.Fatalf("New(unix path) = %v, want nil", err)
+			if got := c.cli.DaemonHost(); got != tc.wantHost {
+				t.Fatalf("DaemonHost() = %q, want %q (New(%q) must not double-prefix an already-schemed host)",
+					got, tc.wantHost, tc.socketPath)
+			}
+			if c.SocketPath() != tc.socketPath {
+				t.Fatalf("SocketPath() = %q, want %q (the original, unmodified input)", c.SocketPath(), tc.socketPath)
+			}
+		})
 	}
-	if c2.SocketPath() != "/var/run/docker.sock" {
-		t.Fatalf("socketPath = %q, want %q", c2.SocketPath(), "/var/run/docker.sock")
+}
+
+// TestIsTCPSocket guards a follow-up gap a security review of issue #10's
+// fix found: cmd/doupro/cmd_serve.go's validateDockerSocketConfig (the
+// fail-closed gate requiring DOUPRO_ALLOW_INSECURE_DOCKER_TCP) originally
+// used a bare strings.HasPrefix(socketPath, "tcp://"), which a value like
+// "TCP://172.17.0.1:2375" or a leading space from a copy-pasted .env line
+// would silently bypass — the daemon would start on an unencrypted,
+// unauthenticated tcp:// socket without ever requiring the opt-in or even
+// logging the warning. IsTCPSocket is now the single source of truth both
+// New (above) and that gate call, so the two can never diverge.
+func TestIsTCPSocket(t *testing.T) {
+	cases := []struct {
+		name       string
+		socketPath string
+		want       bool
+	}{
+		{"lowercase tcp://", "tcp://172.17.0.1:2375", true},
+		{"uppercase TCP://", "TCP://172.17.0.1:2375", true},
+		{"mixed case TcP://", "TcP://172.17.0.1:2375", true},
+		{"leading whitespace", "  tcp://172.17.0.1:2375", true},
+		{"trailing whitespace", "tcp://172.17.0.1:2375  ", true},
+		{"unix:// is not a tcp socket", "unix:///var/run/docker.sock", false},
+		{"raw path is not a tcp socket", "/var/run/docker.sock", false},
+		{"raw path merely containing tcp is not a tcp socket", "/var/run/tcp.sock", false},
+		{"empty string", "", false},
 	}
-	_ = c2.Close()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsTCPSocket(tc.socketPath); got != tc.want {
+				t.Fatalf("IsTCPSocket(%q) = %v, want %v", tc.socketPath, got, tc.want)
+			}
+		})
+	}
 }

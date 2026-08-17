@@ -181,3 +181,15 @@ mode** — turns off all update/rollback actions instance-wide while
 keeping everything else (browsing, checks, the API) working, useful if you
 want visibility into a host before trusting DoUpRo to change anything on
 it.
+
+Pointing the Docker socket path at a `tcp://` address (a socket proxy, or
+a remote Docker host) needs one more step: set the
+`DOUPRO_ALLOW_INSECURE_DOCKER_TCP=true` bootstrap environment variable
+(alongside `DOUPRO_DOCKER_SOCKET` in your `.env` or container
+environment — this one isn't editable from Settings, it requires a
+restart either way). Without it, DoUpRo refuses to start on a `tcp://`
+socket at all: an unencrypted, unauthenticated Docker API is equivalent to
+handing out remote root on that host to anyone who can reach the port, so
+this has to be a deliberate choice, not a default. Only set it once
+you've confirmed the endpoint is actually trustworthy — reachable only
+from your own host/private network, or itself protected with TLS.

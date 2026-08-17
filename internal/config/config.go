@@ -17,6 +17,7 @@ type Config struct {
 	DataDir           string
 	DBPath            string
 	SocketPath        string
+	AllowInsecureTCP  bool
 	LogLevel          string
 	AdminUser         string
 	AdminPassword     string
@@ -69,11 +70,13 @@ type Config struct {
 // half-configured one instead.
 func Load() (Config, error) {
 	trustProxy, _ := strconv.ParseBool(getEnv("DOUPRO_TRUST_PROXY_HEADERS", "false"))
+	allowInsecureTCP, _ := strconv.ParseBool(getEnv("DOUPRO_ALLOW_INSECURE_DOCKER_TCP", "false"))
 	return Config{
 		BindAddr:          getEnv("DOUPRO_BIND_ADDR", ":8080"),
 		DataDir:           getEnv("DOUPRO_DATA_DIR", "/data"),
 		DBPath:            getEnv("DOUPRO_DB_PATH", "/data/doupro.db"),
 		SocketPath:        getEnv("DOUPRO_DOCKER_SOCKET", "/var/run/docker.sock"),
+		AllowInsecureTCP:  allowInsecureTCP,
 		LogLevel:          getEnv("DOUPRO_LOG_LEVEL", "info"),
 		AdminUser:         getEnv("DOUPRO_ADMIN_USER", ""),
 		AdminPassword:     getEnv("DOUPRO_ADMIN_PASSWORD", ""),
