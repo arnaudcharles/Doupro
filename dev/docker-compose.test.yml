@@ -1,0 +1,33 @@
+version: "3.7"
+services:
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy
+    container_name: docker-socket-proxy-test
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1
+      - IMAGES=1
+      - NETWORKS=0
+      - EXEC=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "23750:2375"
+
+  doupro:
+    build:
+      context: .
+      dockerfile: dev/Dockerfile.local
+    user: root
+    container_name: doupro-test
+    environment:
+      - DOUPRO_DOCKER_SOCKET=tcp://socket-proxy:2375
+    depends_on:
+      - socket-proxy
+    ports:
+      - "8080:8080"
+    volumes:
+      - doupro_data:/data
+
+volumes:
+  doupro_data:

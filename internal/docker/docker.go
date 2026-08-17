@@ -50,8 +50,19 @@ type Client struct {
 // dockerHubUsername/dockerHubPassword are optional (both empty means
 // every Pull stays anonymous, identical to before this existed).
 func New(socketPath, dockerHubUsername, dockerHubPassword string) (*Client, error) {
+	// Accept either a raw filesystem path (e.g. /var/run/docker.sock) or a
+	// fully-qualified Docker host URL (e.g. tcp://host:2375 or unix:///var/run/docker.sock).
+	// If the provided socketPath already contains a scheme, use it as-is;
+	// otherwise assume a Unix socket path and prefix with "unix://".
+	host := socketPath
+	if strings.HasPrefix(socketPath, "unix://") || strings.HasPrefix(socketPath, "tcp://") {
+		// already a fully-qualified host URL; use as-is
+	} else {
+		host = "unix://" + socketPath
+	}
+
 	cli, err := dockerclient.NewClientWithOpts(
-		dockerclient.WithHost("unix://"+socketPath),
+		dockerclient.WithHost(host),
 		dockerclient.WithAPIVersionNegotiation(),
 	)
 	if err != nil {

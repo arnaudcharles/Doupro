@@ -180,6 +180,14 @@ func serve() error {
 		return fmt.Errorf("create docker client: %w", err)
 	}
 	defer dockerClient.Close() //nolint:errcheck // best-effort on daemon shutdown
+
+	// If the configured Docker socket is a TCP URL, warn the operator at
+	// startup: an exposed Docker TCP endpoint without TLS/mTLS is unsafe.
+	if strings.HasPrefix(cfg.SocketPath, "tcp://") {
+		logger.Emit(ctx, events.Event{Level: events.LevelWarn, Type: "security.docker_socket_tcp", Actor: events.ActorSystem,
+			Message: "DOUPRO_DOCKER_SOCKET is configured as a tcp:// URL — ensure TLS/mTLS or use a socket-proxy (see SECURITY.md) to avoid exposing the Docker API without encryption/authentication",
+		})
+	}
 	notif := notifier.New(st, logger)
 	upd := updater.New(dockerClient, st, logger, notif)
 	crashMonitor := crashloop.New(dockerClient, st, upd, logger)

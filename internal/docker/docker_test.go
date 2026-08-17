@@ -221,3 +221,25 @@ func TestClientList(t *testing.T) {
 		t.Errorf("second container = %+v, want name=idle excluded=true", got[1])
 	}
 }
+
+func TestNewAcceptsTCPAndUnixForms(t *testing.T) {
+	// tcp:// form
+	c, err := New("tcp://127.0.0.1:23750", "", "")
+	if err != nil {
+		t.Fatalf("New(tcp) = %v, want nil", err)
+	}
+	if c.SocketPath() != "tcp://127.0.0.1:23750" {
+		t.Fatalf("socketPath = %q, want %q", c.SocketPath(), "tcp://127.0.0.1:23750")
+	}
+	_ = c.Close()
+
+	// plain unix socket path (no scheme) should be accepted too
+	c2, err := New("/var/run/docker.sock", "", "")
+	if err != nil {
+		t.Fatalf("New(unix path) = %v, want nil", err)
+	}
+	if c2.SocketPath() != "/var/run/docker.sock" {
+		t.Fatalf("socketPath = %q, want %q", c2.SocketPath(), "/var/run/docker.sock")
+	}
+	_ = c2.Close()
+}
