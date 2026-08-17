@@ -33,12 +33,16 @@ doupro.sock
 # Logs
 *.log
 
-# AI agent context (CLAUDE.md, AGENTS.md, .claude/, PROJECT.md) and the
-# engineering docs (docs/) — kept privately in
-# gitlab.com/arnaudcharles/dev/github-doupro, symlinked in locally at
+# AI agent context (CLAUDE.md, AGENTS.md, .claude/, PROJECT.md), the
+# engineering docs (docs/), and local-only dev/test tooling — kept privately
+# in gitlab.com/arnaudcharles/dev/github-doupro, symlinked in locally at
 # these same paths. Never tracked in this (public) repo.
 /CLAUDE.md
 /AGENTS.md
 /.claude/
 /PROJECT.md
 /docs
+/Dockerfile.local
+/dev/Dockerfile.local
+/dev/docker-compose.test.yml
+/scripts/test-all.sh
