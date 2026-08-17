@@ -32,6 +32,43 @@
         }
       }
     },
+    "/api/v1/openapi.json": {
+      "get": {
+        "tags": ["auth"],
+        "summary": "This OpenAPI document",
+        "description": "Unauthenticated — serves this document, embedded at build time. Backs the Swagger UI at /swagger and any external tooling.",
+        "security": [],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object" } } } }
+        }
+      }
+    },
+    "/api/v1/auth/oidc/login": {
+      "get": {
+        "tags": ["auth"],
+        "summary": "Start an OIDC login",
+        "description": "Unauthenticated. Only registered when OIDC/SSO is configured (see docs/api.md). Redirects to the configured identity provider's authorization endpoint, having first set a short-lived cookie carrying state/nonce/PKCE verifier for handleOIDCCallback to validate.",
+        "security": [],
+        "responses": {
+          "302": { "description": "Redirect to the identity provider" }
+        }
+      }
+    },
+    "/api/v1/auth/oidc/callback": {
+      "get": {
+        "tags": ["auth"],
+        "summary": "OIDC callback",
+        "description": "Unauthenticated. Only registered when OIDC/SSO is configured. The identity provider redirects here after the user authenticates; on success, sets a session cookie and redirects to /, otherwise redirects to /login?error=1.",
+        "security": [],
+        "parameters": [
+          { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "303": { "description": "Redirect to / on success, or /login?error=1 on failure" }
+        }
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": ["auth"],

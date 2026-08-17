@@ -35,7 +35,7 @@ participating, you're expected to uphold it.
 
 ## Development setup
 
-Requirements: Go 1.22+, Docker, `make`.
+Requirements: Go 1.25+ (see `go.mod`), Docker, `make`.
 
 ```bash
 git clone https://github.com/arnaudcharles/DoUpRo.git
@@ -53,6 +53,29 @@ To build and run the full container image locally:
 make docker-build
 docker compose up
 ```
+
+Optionally, install the pre-commit hooks (gofmt, goimports, golangci-lint,
+plus the usual trailing-whitespace/end-of-file checks) so formatting and
+lint issues are caught before you even commit:
+
+```bash
+pip install pre-commit   # or: brew install pre-commit
+pre-commit install
+```
+
+Before pushing, run the full pre-push validation script — it's the same
+set of checks CI runs, in one command:
+
+```bash
+./scripts/validate.sh
+```
+
+It formats/vets/lints the code, runs the full Go test suite (including the
+CLI end-to-end tests, the API↔OpenAPI contract test, and the Swagger
+smoke tests), builds the Docker image, validates `docker-compose.yml`,
+and starts the built image to confirm it actually boots and answers
+`/health`. Requires Docker; `golangci-lint`/`goimports` are used if
+installed and otherwise skipped locally (CI always runs them).
 
 See the package layout under `internal/` (one directory per subsystem —
 containers/scheduling live in `internal/updater`/`internal/scheduler`,
@@ -77,7 +100,8 @@ conventions already established in that package's existing code.
 
 ## Pull requests
 
-1. Make sure `make lint` and `make test` pass locally.
+1. Make sure `./scripts/validate.sh` (or at least `make lint` and
+   `make test`) passes locally.
 2. Update `manuals/` if user-facing behavior changes — a PR that changes
    behavior without updating docs will be asked to add them.
 3. Fill in the PR template, including a short rationale (the "why", not
