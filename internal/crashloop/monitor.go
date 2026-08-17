@@ -43,10 +43,15 @@ func (m *Monitor) Run(ctx context.Context) {
 			case <-ctx.Done():
 				expiryTicker.Stop()
 				return
-			case now := <-expiryTicker.C:
-				if expired, err := m.store.ExpireRollbackWatches(ctx, now); err == nil && expired > 0 {
-					m.logger.Emit(ctx, events.Event{Level: events.LevelInfo, Type: "crashloop.expired", Actor: events.ActorSystem, Message: fmt.Sprintf("expired %d automatic rollback watch(es)", expired), Metadata: map[string]any{"count": expired}})
-				}
+			case <-expiryTicker.C:
+				// Also reconciles RestartCount for active watches on the same
+				// cadence — the Docker event stream can silently drop a "die"
+				// event (reconnect gaps, exit-code parsing quirks), and
+				// RestartCount is the only authoritative signal that doesn't
+				// depend on having seen every event. Without this, a missed
+				// crash is only ever backfilled when the stream reconnects,
+				// which may not happen for a long time on a healthy connection.
+				m.reconcile(ctx)
 			case event, ok := <-eventsCh:
 				if !ok {
 					streamEnded = true

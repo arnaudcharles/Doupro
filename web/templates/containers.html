@@ -39,7 +39,7 @@
     </div>
     <div class="stack-body rounded-lg border border-gray-800 divide-y divide-gray-800 overflow-hidden">
       {{range .Containers}}
-      <div class="flex items-center gap-4 px-4 py-3 bg-gray-900/40 {{if .Excluded}}opacity-50{{end}}">
+      <div class="flex items-center gap-4 px-4 py-3 bg-gray-900/40 flex-wrap {{if .Excluded}}opacity-50{{end}}">
         <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full shrink-0
           {{if eq .StateClass "running"}}bg-state-running/15 text-state-running
           {{else if eq .StateClass "created"}}bg-state-created/15 text-state-created
@@ -58,7 +58,7 @@
           {{.StateLabel}}
         </span>
 
-        <div class="min-w-0 flex-1">
+        <div class="min-w-0 flex-1 basis-40">
           <div class="font-medium truncate">
             {{.Name}}
             {{if .Excluded}}<span class="ml-1 text-[10px] uppercase tracking-wide text-gray-500">excluded</span>{{end}}
@@ -66,7 +66,7 @@
           <div class="text-[11px] text-gray-500 truncate mt-0.5" title="image defined in compose">{{.DefinedImage}}</div>
         </div>
 
-        <div class="w-80 min-w-0 shrink-0 flex items-center gap-1.5 flex-wrap justify-end">
+        <div class="w-full sm:w-auto sm:max-w-xs min-w-0 shrink-0 flex items-center gap-1.5 flex-wrap justify-end">
           <span class="text-xs px-2 py-1 rounded truncate max-w-[10rem] {{if .VersionResolved}}bg-chip-current text-chip-current-text{{else}}bg-gray-800 text-gray-500 border border-gray-700{{end}}"
                 title="{{if .Excluded}}This version isn't verified because it's excluded in Settings{{else if .VersionResolved}}Exact running version resolved from immutable registry metadata{{else}}Source image tag{{if .ResolvedDigestHint}} (running digest: {{.ResolvedDigestHint}}){{end}}{{end}}">
             {{.ResolvedVersion}}
@@ -81,7 +81,7 @@
           {{end}}
         </div>
 
-        <div class="w-56 shrink-0 flex items-center gap-1.5 justify-end">
+        <div class="w-full sm:w-auto shrink-0 flex items-center gap-1.5 justify-end">
           {{if .Operation}}
           <span class="text-xs px-2 py-1 rounded border border-blue-400/40 text-blue-300 capitalize" title="Another destructive action is blocked until this operation finishes">{{.Operation}} in progress</span>
           {{else}}
