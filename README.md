@@ -1,7 +1,7 @@
 <div align="center">
 
 # DoUpRo
-*Pronouced 'do pro'*
+*Pronounced 'do pro'*
 
 <img src="media/logo.png" alt="DoUpRo logo" width="160" />
 
