@@ -23,6 +23,17 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Install goimports
+        run: go install golang.org/x/tools/cmd/goimports@latest
+
+      - name: Check formatting (gofmt)
+        run: |
+          if [[ -n "$(gofmt -l .)" ]]; then echo "gofmt needed"; gofmt -w .; exit 1; fi
+
+      - name: Check imports (goimports)
+        run: |
+          if [[ -n "$(goimports -l .)" ]]; then echo "goimports needed"; exit 1; fi
+
       - name: Vet
         run: go vet ./...
 
@@ -44,7 +55,7 @@ jobs:
           version: v2.12
 
   docker:
-    name: Docker image build (multi-arch)
+    name: Docker image build (multi-arch) & smoke test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -64,3 +75,94 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: false
           tags: sharlihe/doupro:ci
+
+      # The multi-arch build above never actually runs the image — it only
+      # proves the Dockerfile assembles for both platforms. Load just the
+      # runner's native amd64 build into the local Docker daemon so it can
+      # be started for real: catches a broken ENTRYPOINT/CMD, a distroless
+      # final stage missing a runtime file, or a config regression the Go
+      # test suite (which never touches the packaged binary) can't see.
+      - name: Build image for smoke test (amd64, loaded locally)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: sharlihe/doupro:smoke
+
+      - name: Run container and wait for a healthy status
+        run: |
+          # The final image runs as a fixed non-root uid:gid (1000:1000, see
+          # Dockerfile) with no shell to create directories on the fly, so
+          # /data needs to already be owned by that uid before the daemon's
+          # first write (its SQLite WAL file) — same requirement documented
+          # in docker-compose.yml, just applied here with a throwaway helper
+          # container instead of a host bind mount.
+          docker volume create doupro_smoke_data
+          docker run --rm -v doupro_smoke_data:/data alpine:3 chown -R 1000:1000 /data
+
+          docker run -d --name doupro-smoke \
+            -p 18080:8080 \
+            -v doupro_smoke_data:/data \
+            sharlihe/doupro:smoke
+
+          for i in $(seq 1 30); do
+            status="$(docker inspect --format='{{.State.Health.Status}}' doupro-smoke)"
+            if [[ "$status" == "healthy" ]]; then
+              echo "container is healthy"
+              break
+            fi
+            if [[ "$status" == "unhealthy" || "$i" == "30" ]]; then
+              echo "container did not become healthy in time (status: $status)"
+              docker logs doupro-smoke
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Verify /health over HTTP
+        run: |
+          code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/health)"
+          if [[ "$code" != "200" ]]; then
+            echo "GET /health = $code, want 200"
+            docker logs doupro-smoke
+            exit 1
+          fi
+
+      - name: Verify /api/v1/openapi.json over HTTP
+        run: |
+          code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/v1/openapi.json)"
+          if [[ "$code" != "200" ]]; then
+            echo "GET /api/v1/openapi.json = $code, want 200"
+            docker logs doupro-smoke
+            exit 1
+          fi
+
+      - name: Verify the in-container CLI healthcheck (same as the Dockerfile HEALTHCHECK)
+        run: docker exec doupro-smoke /usr/local/bin/doupro healthcheck
+
+      - name: Container logs (always, for diagnosis)
+        if: always()
+        run: docker logs doupro-smoke || true
+
+      - name: Stop and remove the smoke container
+        if: always()
+        run: |
+          docker rm -f doupro-smoke || true
+          docker volume rm doupro_smoke_data || true
+
+  compose:
+    name: docker compose config validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate docker-compose.yml
+        run: docker compose -f docker-compose.yml config --quiet
+
+      # dev/docker-compose.test.yml is intentionally not part of this public
+      # repo (kept privately, symlinked in locally — see .gitignore), so
+      # there is nothing else for this job to validate in CI. Its own
+      # syntax is checked as part of the maintainer's private pre-push
+      # workflow instead (see docs/test-playbook.md, not public either).
