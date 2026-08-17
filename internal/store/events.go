@@ -63,6 +63,14 @@ type EventFilter struct {
 	Limit     int
 }
 
+// escapeLike escapes SQL LIKE wildcards (% and _) in user-supplied filter
+// text so they're matched literally instead of acting as pattern
+// metacharacters, before the caller wraps the result in its own %...%.
+func escapeLike(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+	return r.Replace(s)
+}
+
 // ListEvents returns events newest-first, matching the filters the Logs
 // page and GET /api/v1/logs expose (see docs/logs.md).
 func (s *Store) ListEvents(ctx context.Context, f EventFilter) ([]EventRecord, error) {
@@ -81,12 +89,12 @@ func (s *Store) ListEvents(ctx context.Context, f EventFilter) ([]EventRecord, e
 	args := make([]any, 0, 4)
 
 	if f.EventType != "" {
-		q.WriteString(" AND event = ?")
-		args = append(args, f.EventType)
+		q.WriteString(" AND event LIKE ? ESCAPE '\\'")
+		args = append(args, "%"+escapeLike(f.EventType)+"%")
 	}
 	if f.Container != "" {
-		q.WriteString(" AND container = ?")
-		args = append(args, f.Container)
+		q.WriteString(" AND container LIKE ? ESCAPE '\\'")
+		args = append(args, "%"+escapeLike(f.Container)+"%")
 	}
 	if f.Level != "" {
 		q.WriteString(" AND level = ?")
