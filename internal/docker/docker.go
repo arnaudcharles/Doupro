@@ -45,6 +45,24 @@ type Client struct {
 	dockerHubPassword string
 }
 
+// IsTCPSocket reports whether socketPath is a tcp:// Docker host URL —
+// the shape that must go through the DOUPRO_ALLOW_INSECURE_DOCKER_TCP gate
+// (cmd/doupro/cmd_serve.go's validateDockerSocketConfig) before New is ever
+// called. A single shared, case- and whitespace-insensitive check here is
+// what New below and that gate both call, so the two can never diverge —
+// DOUPRO_DOCKER_SOCKET is operator-supplied (a config file value, not
+// request input), and " TCP://..." from a copy-pasted .env line must be
+// recognized exactly the same way by both.
+func IsTCPSocket(socketPath string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(socketPath)), "tcp://")
+}
+
+// isUnixSocketURL reports whether socketPath is already a unix:// URL,
+// with the same case/whitespace tolerance as IsTCPSocket.
+func isUnixSocketURL(socketPath string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(socketPath)), "unix://")
+}
+
 // New connects to the Docker daemon over the Unix socket at socketPath.
 // It does not verify connectivity — call Ping or List to do that.
 // dockerHubUsername/dockerHubPassword are optional (both empty means
@@ -55,7 +73,7 @@ func New(socketPath, dockerHubUsername, dockerHubPassword string) (*Client, erro
 	// If the provided socketPath already contains a scheme, use it as-is;
 	// otherwise assume a Unix socket path and prefix with "unix://".
 	host := socketPath
-	if strings.HasPrefix(socketPath, "unix://") || strings.HasPrefix(socketPath, "tcp://") {
+	if isUnixSocketURL(socketPath) || IsTCPSocket(socketPath) {
 		// already a fully-qualified host URL; use as-is
 	} else {
 		host = "unix://" + socketPath
