@@ -19,6 +19,7 @@
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" />
   <img src="https://img.shields.io/badge/Platform-linux%2Famd64%20%7C%20linux%2Farm64-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?style=flat-square&logo=go&logoColor=white&labelColor=2C3E50" alt="Go" />
+  <a href="https://hub.docker.com/r/sharlihe/doupro"><img src="https://img.shields.io/docker/pulls/sharlihe/doupro?logo=docker&logoColor=white&label=Docker%20Hub" alt="Docker Hub" /></a>
 </p>
 
 Multi-arch image (`linux/amd64`, `linux/arm64`)
@@ -80,6 +81,8 @@ Nothing happens without being logged, and nothing is ever a one-way door.
   Prometheus metrics, and a Content-Security-Policy-hardened web UI.
 
 ## 📦 Installation
+
+Image: [`sharlihe/doupro`](https://hub.docker.com/r/sharlihe/doupro) on Docker Hub.
 
 ### `docker run`
 
