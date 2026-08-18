@@ -66,7 +66,7 @@ jobs:
       # this isn't emulating the compiler, just the final-stage assembly.
       - uses: docker/setup-qemu-action@v4
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Build image for linux/amd64 and linux/arm64 (no push)
         uses: docker/build-push-action@v7
