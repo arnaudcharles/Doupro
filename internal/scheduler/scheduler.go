@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	cron "github.com/robfig/cron/v3"
@@ -26,6 +27,19 @@ const DefaultCheckInterval = 30 * time.Minute
 // the next full registry check to be noticed.
 const dueTickInterval = 30 * time.Second
 
+// tickTimeout bounds a single scheduler tick (a full Check() sweep, or a
+// runRelativePolicies pass). Run's select loop is single-threaded and
+// re-arms checkTimer only after its case returns (see Run), so a Docker
+// call that hangs indefinitely — e.g. Client.Pull draining a stalled
+// ImagePull stream, which has no timeout of its own (see
+// internal/docker.Client) — would otherwise freeze every future tick
+// forever: no more registry checks, no more due-schedule execution, with
+// no crash or error logged, since nothing ever returns to observe. A
+// generous but finite ceiling here guarantees the loop always gets back
+// to select, even in that worst case, at the cost of that one tick's
+// results being incomplete.
+const tickTimeout = 20 * time.Minute
+
 // Scheduler runs the periodic registry check and executes one-off and
 // recurring schedules. See docs/schedule.md.
 type Scheduler struct {
@@ -35,6 +49,11 @@ type Scheduler struct {
 	logger        *events.Logger
 	notifier      *notifier.Notifier
 	checkInterval time.Duration
+
+	// ticking guards against two ticks (a checkTimer fire and a dueTicker
+	// fire) running concurrently against the same containers/schedules —
+	// see runTick.
+	ticking atomic.Bool
 }
 
 // New builds a Scheduler. All dependencies must already be open/connected.
@@ -63,14 +82,44 @@ func (s *Scheduler) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-checkTimer.C:
-			Check(ctx, s.logger, s.docker, s.store, s.notifier)
-			s.runRelativePolicies(ctx)
+			s.runTick(ctx, func(tickCtx context.Context) {
+				Check(tickCtx, s.logger, s.docker, s.store, s.notifier)
+				s.runRelativePolicies(tickCtx)
+			})
 			checkTimer.Reset(s.currentCheckInterval(ctx))
 		case <-dueTicker.C:
-			s.runDueSchedules(ctx)
-			s.runRelativePolicies(ctx)
+			s.runTick(ctx, func(tickCtx context.Context) {
+				s.runDueSchedules(tickCtx)
+				s.runRelativePolicies(tickCtx)
+			})
 		}
 	}
+}
+
+// runTick runs fn in its own goroutine, under a context bounded by
+// tickTimeout, and returns immediately — so Run's select loop always comes
+// back around on schedule no matter what happens inside fn, even in the
+// worst case where a Docker/registry call ignores context cancellation
+// entirely (tickTimeout's doc comment covers the ordinary case where
+// cancellation is honored; this covers the case where it isn't). Skips
+// starting a new tick while a previous one is still running, rather than
+// running them concurrently against the same containers/schedules — a
+// still-hung previous tick just means this tick (and any after it, until
+// the hang eventually resolves or the process restarts) is silently
+// skipped, which is the same "stale until it recovers" behavior the code
+// already had before this fix, not a new failure mode.
+func (s *Scheduler) runTick(ctx context.Context, fn func(context.Context)) {
+	if !s.ticking.CompareAndSwap(false, true) {
+		s.logger.Emit(ctx, events.Event{Level: events.LevelWarn, Type: "scheduler.tick_skipped", Actor: events.ActorSystem,
+			Message: "skipped a scheduler tick: the previous one is still running"})
+		return
+	}
+	go func() {
+		defer s.ticking.Store(false)
+		tickCtx, cancel := context.WithTimeout(ctx, tickTimeout)
+		defer cancel()
+		fn(tickCtx)
+	}()
 }
 
 // currentCheckInterval reads Settings -> General's check interval, or

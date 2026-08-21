@@ -137,6 +137,7 @@ type Notifier struct {
 	lease        time.Duration
 	baseBackoff  time.Duration
 	maxBackoff   time.Duration
+	sendTimeout  time.Duration
 }
 
 // New builds a Notifier backed by st for channel config and the
@@ -148,7 +149,7 @@ func New(st *store.Store, loggers ...*events.Logger) *Notifier {
 	}
 	return &Notifier{store: st, logger: logger, send: shoutrrr.Send,
 		pollInterval: time.Second, lease: 2 * time.Minute,
-		baseBackoff: time.Minute, maxBackoff: time.Hour}
+		baseBackoff: time.Minute, maxBackoff: time.Hour, sendTimeout: 30 * time.Second}
 }
 
 // Channels returns the currently configured channels.
@@ -304,12 +305,33 @@ func (n *Notifier) Run(ctx context.Context) {
 	}
 }
 
+// sendWithTimeout calls n.send in its own goroutine and waits up to
+// sendTimeout for it to return, so one unresponsive webhook/bot endpoint
+// (shoutrrr's underlying HTTP clients set no request timeout of their own —
+// same shape as the internal/docker.Client.Pull hang this mirrors the fix
+// for) can never block Run's single-threaded delivery loop past this one
+// job — without this, a single stuck channel would silently stop
+// notification delivery for every channel, forever. n.send itself is a
+// plain func(string, string) error with no context parameter, so it can't
+// be cancelled once started; a leaked goroutine on timeout is the accepted
+// cost of not blocking the worker loop indefinitely.
+func (n *Notifier) sendWithTimeout(channelURL, message string) error {
+	result := make(chan error, 1)
+	go func() { result <- n.send(channelURL, message) }()
+	select {
+	case err := <-result:
+		return err
+	case <-time.After(n.sendTimeout):
+		return fmt.Errorf("send notification: timed out after %s", n.sendTimeout)
+	}
+}
+
 func (n *Notifier) deliverOne(ctx context.Context) (bool, error) {
 	job, err := n.store.ClaimNotification(ctx, time.Now(), n.lease)
 	if err != nil || job == nil {
 		return false, err
 	}
-	sendErr := n.send(job.ChannelURL, job.Message)
+	sendErr := n.sendWithTimeout(job.ChannelURL, job.Message)
 	status, errText := "sent", ""
 	if sendErr == nil {
 		now := time.Now().UTC()
