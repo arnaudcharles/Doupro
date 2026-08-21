@@ -76,18 +76,18 @@ func RegisterRoutes(mux *http.ServeMux, st *store.Store, upd *updater.Updater, n
 	mux.Handle("POST /api/v1/auth/password", protected(passwordLimiter.wrap(handleChangePassword(st, logger))))
 	mux.Handle("GET /api/v1/containers", withPermission(store.PermissionReadContainers, http.HandlerFunc(handleListContainers(st, upd))))
 	mux.Handle("GET /api/v1/logs", withPermission(store.PermissionViewLogs, http.HandlerFunc(handleListLogs(st))))
-	// {id} is matched against the container *name*, not Docker's container
-	// ID, which changes on every recreate — the name is what stays stable
-	// and what operators actually refer to (docs/cli.md examples all use
-	// the name, e.g. `doupro update adguard-home`).
-	mux.Handle("GET /api/v1/containers/{id}", withPermission(store.PermissionReadContainers, http.HandlerFunc(handleGetContainer(st, upd))))
-	mux.Handle("POST /api/v1/containers/{id}/check", withPermission(store.PermissionWriteContainers, http.HandlerFunc(handleCheckContainer(st, cli, logger, notif))))
+	// {name} is matched against the container *name*, not Docker's
+	// container ID, which changes on every recreate — the name is what
+	// stays stable and what operators actually refer to (docs/cli.md
+	// examples all use the name, e.g. `doupro update adguard-home`).
+	mux.Handle("GET /api/v1/containers/{name}", withPermission(store.PermissionReadContainers, http.HandlerFunc(handleGetContainer(st, upd))))
+	mux.Handle("POST /api/v1/containers/{name}/check", withPermission(store.PermissionWriteContainers, http.HandlerFunc(handleCheckContainer(st, cli, logger, notif))))
 	// GET previews exactly what POST on the same path would do — a
 	// read-only dry-run, gated on read (not write) access accordingly.
-	mux.Handle("GET /api/v1/containers/{id}/update", withPermission(store.PermissionReadContainers, http.HandlerFunc(handlePreviewUpdate(st))))
-	mux.Handle("POST /api/v1/containers/{id}/update", withPermission(store.PermissionWriteContainers, http.HandlerFunc(handleUpdateContainer(st, upd, resolveVer))))
-	mux.Handle("POST /api/v1/containers/{id}/rollback", withPermission(store.PermissionWriteContainers, http.HandlerFunc(handleRollbackContainer(st, upd, resolveVer))))
-	// A distinct path shape from {id}/update (one segment shorter), so
+	mux.Handle("GET /api/v1/containers/{name}/update", withPermission(store.PermissionReadContainers, http.HandlerFunc(handlePreviewUpdate(st))))
+	mux.Handle("POST /api/v1/containers/{name}/update", withPermission(store.PermissionWriteContainers, http.HandlerFunc(handleUpdateContainer(st, upd, resolveVer))))
+	mux.Handle("POST /api/v1/containers/{name}/rollback", withPermission(store.PermissionWriteContainers, http.HandlerFunc(handleRollbackContainer(st, upd, resolveVer))))
+	// A distinct path shape from {name}/update (one segment shorter), so
 	// there's no route-matching ambiguity with a container literally
 	// named "update-all".
 	mux.Handle("POST /api/v1/containers/update-all", withPermission(store.PermissionWriteContainers, http.HandlerFunc(handleUpdateAllContainers(st, upd, resolveVer, logger))))
@@ -219,7 +219,7 @@ func toContainerResponse(ctx context.Context, st *store.Store, upd *updater.Upda
 // tracked container, the same shape as one entry from the list endpoint.
 func handleGetContainer(st *store.Store, upd *updater.Updater) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rec, err := st.GetContainerByName(r.Context(), r.PathValue("id"))
+		rec, err := st.GetContainerByName(r.Context(), r.PathValue("name"))
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "not_found", "container not found")
 			return
@@ -248,7 +248,7 @@ type checkResponse struct {
 // silently skips.
 func handleCheckContainer(st *store.Store, cli *docker.Client, logger *events.Logger, notif *notifier.Notifier) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		checked, updateAvailable, err := scheduler.CheckOneContainerNow(r.Context(), logger, cli, st, notif, r.PathValue("id"))
+		checked, updateAvailable, err := scheduler.CheckOneContainerNow(r.Context(), logger, cli, st, notif, r.PathValue("name"))
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "not_found", "container not found")
 			return
@@ -341,7 +341,7 @@ type updatePreviewResponse struct {
 // concrete before/after before committing to it.
 func handlePreviewUpdate(st *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rec, err := st.GetContainerByName(r.Context(), r.PathValue("id"))
+		rec, err := st.GetContainerByName(r.Context(), r.PathValue("name"))
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "not_found", "container not found")
 			return
@@ -376,7 +376,7 @@ func handlePreviewUpdate(st *store.Store) http.HandlerFunc {
 // the version strings for immediate display.
 func handleUpdateContainer(st *store.Store, upd *updater.Updater, resolveVer versionResolver) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rec, err := st.GetContainerByName(r.Context(), r.PathValue("id"))
+		rec, err := st.GetContainerByName(r.Context(), r.PathValue("name"))
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "not_found", "container not found")
 			return
@@ -445,7 +445,7 @@ func respondSelfUpdate(w http.ResponseWriter, r *http.Request, err error) {
 // for immediate display.
 func handleRollbackContainer(st *store.Store, upd *updater.Updater, resolveVer versionResolver) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rec, err := st.GetContainerByName(r.Context(), r.PathValue("id"))
+		rec, err := st.GetContainerByName(r.Context(), r.PathValue("name"))
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "not_found", "container not found")
 			return

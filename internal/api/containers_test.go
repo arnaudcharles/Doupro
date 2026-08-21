@@ -92,7 +92,7 @@ func TestHandleGetContainerReturnsDetailForKnownContainer(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/containers/grav", nil)
-	req.SetPathValue("id", "grav")
+	req.SetPathValue("name", "grav")
 	resp := httptest.NewRecorder()
 	handleGetContainer(st, upd)(resp, req)
 
@@ -108,7 +108,7 @@ func TestHandleGetContainerNotFound(t *testing.T) {
 	st, upd := newTestStoreAndUpdater(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/containers/nope", nil)
-	req.SetPathValue("id", "nope")
+	req.SetPathValue("name", "nope")
 	resp := httptest.NewRecorder()
 	handleGetContainer(st, upd)(resp, req)
 
@@ -123,7 +123,7 @@ func TestHandleCheckContainerNotFound(t *testing.T) {
 	notif := notifier.New(st, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/containers/nope/check", nil)
-	req.SetPathValue("id", "nope")
+	req.SetPathValue("name", "nope")
 	resp := httptest.NewRecorder()
 	// A nil *docker.Client is safe here: CheckOneContainerNow resolves
 	// store.ErrNotFound from st.GetContainerByName before it ever touches
@@ -161,7 +161,7 @@ func TestHandlePreviewUpdateResolvesCandidateWithoutMutatingAnything(t *testing.
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/containers/grav/update", nil)
-	req.SetPathValue("id", "grav")
+	req.SetPathValue("name", "grav")
 	resp := httptest.NewRecorder()
 	handlePreviewUpdate(st)(resp, req)
 
@@ -212,7 +212,7 @@ func TestHandlePreviewUpdateDoesNotShowARawFloatingTagAsATargetVersion(t *testin
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/containers/grav/update", nil)
-	req.SetPathValue("id", "grav")
+	req.SetPathValue("name", "grav")
 	resp := httptest.NewRecorder()
 	handlePreviewUpdate(st)(resp, req)
 
@@ -228,7 +228,7 @@ func TestHandlePreviewUpdateRejectsBadSemverScope(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/containers/grav/update?semver=bogus", nil)
-	req.SetPathValue("id", "grav")
+	req.SetPathValue("name", "grav")
 	resp := httptest.NewRecorder()
 	handlePreviewUpdate(st)(resp, req)
 

@@ -8,6 +8,39 @@ it reaches `1.0.0`.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-21
+
+### Fixed
+
+- The scheduler's periodic registry check and due-schedule execution could
+  freeze permanently: `Run`'s loop called `Check`/`runRelativePolicies`/
+  `runDueSchedules` synchronously with no per-tick deadline, so a single
+  Docker call that never returns (e.g. `Client.Pull` draining a stalled
+  `ImagePull` stream — the Docker SDK sets no timeout of its own) blocked
+  every future tick forever, with nothing logged, while the rest of the
+  daemon (API, manual actions) kept responding normally — indistinguishable
+  from "just not detecting updates" until compared against wall-clock time.
+  Each tick now runs in its own goroutine under a 20-minute timeout, and a
+  tick still running when the next one is due is skipped (logged as
+  `scheduler.tick_skipped`) rather than run concurrently against the same
+  containers/schedules.
+- The same class of bug existed in the notification delivery worker
+  (`internal/notifier`): its single-threaded loop called `shoutrrr.Send`
+  synchronously with no timeout, so one unresponsive webhook/bot endpoint
+  would silently stop delivery for every configured channel, not just the
+  slow one. `send` now runs with a 30-second timeout per attempt; a job
+  that times out is retried/dead-lettered like any other delivery failure.
+
+### Changed
+
+- The Go router's internal wildcard for the container-scoped API routes
+  (`/api/v1/containers/{id}`, `.../check`, `.../update`, `.../rollback`)
+  is now named `{name}`, matching what it's always actually matched
+  against (the container's name — never Docker's own container ID, which
+  changes on every recreate) and what `openapi.json` already documented.
+  No behavior change: the parameter accepted exactly the same values
+  before and after.
+
 ## [0.3.0] - 2026-08-21
 
 ### Fixed
