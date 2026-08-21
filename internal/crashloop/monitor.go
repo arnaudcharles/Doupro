@@ -118,6 +118,8 @@ func (m *Monitor) reconcile(ctx context.Context) time.Time {
 }
 
 func (m *Monitor) handleEvent(ctx context.Context, event docker.ContainerEvent) {
+	m.syncState(ctx, event)
+
 	if event.Action != "die" || event.Name == "" {
 		return
 	}
@@ -131,6 +133,40 @@ func (m *Monitor) handleEvent(ctx context.Context, event docker.ContainerEvent) 
 		eventNano = event.Time.UnixNano()
 	}
 	m.recordCrash(ctx, event.Name, event.ContainerID, eventNano, event.Time, "docker_event")
+}
+
+// lifecycleState maps the subset of Docker container-event actions that
+// change the running state into the same State strings docker.Client.List
+// (and thus the Containers page) already uses, so a manual `docker
+// start`/`stop`/`kill` outside DoUpRo shows up in the UI immediately instead
+// of only after the next periodic scheduler.Check() tick (up to
+// DefaultCheckInterval later — see internal/scheduler/scheduler.go). Actions
+// with no running-state effect for our purposes (e.g. "create", "rename")
+// are left unmapped and ignored.
+var lifecycleState = map[string]string{
+	"start":   "running",
+	"unpause": "running",
+	"die":     "exited",
+	"stop":    "exited",
+	"kill":    "exited",
+	"pause":   "paused",
+	"oom":     "exited",
+}
+
+// syncState reflects a container's running state into the store as soon as
+// Docker reports it, independent of crash-loop tracking. Best-effort: a
+// stale row here is corrected by the next periodic Check() regardless, so a
+// store error is logged and swallowed rather than disrupting event
+// processing for the rest of the stream.
+func (m *Monitor) syncState(ctx context.Context, event docker.ContainerEvent) {
+	state, ok := lifecycleState[event.Action]
+	if !ok || event.ContainerID == "" {
+		return
+	}
+	if err := m.store.SetContainerState(ctx, event.ContainerID, state, ""); err != nil {
+		m.logger.Emit(ctx, events.Event{Level: events.LevelWarn, Type: "container.sync_failed", Container: event.Name,
+			Actor: events.ActorSystem, Message: fmt.Sprintf("could not sync live state for %s: %v", event.Name, err)})
+	}
 }
 
 func (m *Monitor) recordCrash(ctx context.Context, name, id string, eventNano int64, at time.Time, source string) {

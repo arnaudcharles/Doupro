@@ -116,6 +116,9 @@ func (s *Store) migratePlaintextSecrets(ctx context.Context) error {
 	if err := rows.Close(); err != nil {
 		return err
 	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate queued secrets: %w", err)
+	}
 	for _, u := range updates {
 		if _, err := tx.ExecContext(ctx, `UPDATE notification_queue SET channel_url=? WHERE id=?`, u.value, u.id); err != nil {
 			return err

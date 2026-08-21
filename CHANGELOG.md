@@ -8,8 +8,29 @@ it reaches `1.0.0`.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-21
+
+### Fixed
+
+- Container state (`running`/`exited`/`paused`, ...) could go stale on the
+  Containers page for up to the full check interval (30 minutes by
+  default) after a container was started, stopped, or killed outside
+  DoUpRo — e.g. manually via `docker start` after a host reboot. The
+  crash-loop monitor's already-open Docker event stream now updates a
+  container's stored state immediately on `start`/`stop`/`kill`/`die`/
+  `pause`/`unpause`/`oom`, independent of crash-loop detection; the
+  periodic check remains the fallback for anything the event stream
+  misses (reconnect gaps, daemon restarts).
+- A missing `rows.Err()` check after the plaintext-secret migration's
+  `notification_queue` scan loop meant an interrupted iteration (as
+  opposed to a clean end-of-rows) was silently swallowed, letting the
+  migration transaction commit having encrypted only part of the queued
+  secrets.
+
+## [0.2.0] - 2026-08-17
+
 Everything below shipped after the `0.1.0` tag, verified end-to-end
-against a real homelab, not just unit tests. Not yet re-tagged.
+against a real homelab, not just unit tests.
 
 ### Added
 
@@ -172,17 +193,3 @@ tests) — not a scaffold anymore.
   none of the three surfaces can ever behave differently.
 - Docker packaging: multi-stage `Dockerfile` (distroless, non-root),
   `docker-compose.yml`, `.env.example`.
-
-### Known gaps (tracked, not yet built)
-
-- No multi-user roles — every authenticated identity (local or OIDC) has
-  full access. Design is locked (3 permission levels + fine-grained
-  checkboxes); implementation is next.
-- No Unix-socket local CLI mode — every CLI invocation (including via
-  `docker exec`) needs `--host`/`--api-key`, same as a remote caller.
-- No semver bump-policy target selection — update detection is
-  digest-only (catches a moved tag, not "a newer tag exists").
-  `relative` + `delayed` recurring policy is creatable but not yet
-  executed by the scheduler.
-- No automatic rollback on crash-loop yet (needs a Docker event stream
-  watcher — only manual Update/Rollback exist).
