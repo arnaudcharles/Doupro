@@ -195,6 +195,28 @@ ON CONFLICT(id) DO UPDATE SET
 	return nil
 }
 
+// SetContainerState updates only the state (and, optionally, the
+// human-readable status) of an already-tracked container, without touching
+// any other column — used by the Docker event listener (internal/crashloop)
+// to reflect a start/stop/die immediately in the UI instead of waiting for
+// the next periodic Check() tick (up to DefaultCheckInterval later). An
+// empty status leaves the existing value alone: Docker's event stream
+// doesn't carry the "Up 3 hours"-style string List() produces, and writing
+// "" would blank a perfectly good display value until the next Check(). A
+// container DoUpRo hasn't discovered yet has no row to update, so this is a
+// silent no-op rather than an error: the next periodic Check() will insert
+// it via UpsertSeen regardless.
+func (s *Store) SetContainerState(ctx context.Context, id, state, status string) error {
+	const q = `
+UPDATE containers
+SET state = ?, status = CASE WHEN ? = '' THEN status ELSE ? END, updated_at = ?
+WHERE id = ?;`
+	if _, err := s.db.ExecContext(ctx, q, state, status, status, time.Now().UTC().Format(time.RFC3339Nano), id); err != nil {
+		return fmt.Errorf("set container state for %s: %w", id, err)
+	}
+	return nil
+}
+
 // RecoverImageReference returns the most recently logged mutable image
 // reference for a container. It repairs rows written by older releases
 // that allowed a rollback's raw/canonical digest to overwrite the original
