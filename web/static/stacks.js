@@ -49,6 +49,49 @@
   }
 })();
 
+// "Updatable" filter on the Containers page. Toggles visibility of
+// container rows that have no update available, hiding whole stacks that
+// end up empty as a result while leaving their toggle/dropdown intact for
+// when the filter is switched off again. Purely client-side, no reload.
+(function () {
+  function wireUpdatableFilter() {
+    var button = document.getElementById('updatable-filter-btn');
+    if (!button) return;
+
+    var active = false;
+
+    function apply() {
+      document.querySelectorAll('[data-stack]').forEach(function (section) {
+        var rows = section.querySelectorAll('[data-container-row]');
+        var visibleCount = 0;
+
+        rows.forEach(function (row) {
+          var show = !active || row.dataset.updatable === '1';
+          row.classList.toggle('hidden', !show);
+          if (show) visibleCount++;
+        });
+
+        section.classList.toggle('hidden', active && visibleCount === 0);
+      });
+    }
+
+    button.addEventListener('click', function () {
+      active = !active;
+      button.textContent = active ? 'All' : 'Updatable';
+      button.title = active
+        ? 'Show all containers'
+        : 'Show only containers with an update available';
+      apply();
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireUpdatableFilter);
+  } else {
+    wireUpdatableFilter();
+  }
+})();
+
 // Show a donut progress spinner while update/rollback operations are running.
 // Replaces the button with a spinner, makes an AJAX request, and reloads
 // the page on success. This gives immediate visual feedback instead of
