@@ -6,6 +6,7 @@
       {{if .CanWriteContainers}}
       <button type="button" id="update-all-btn" class="update-all-btn text-xs px-2.5 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800" title="Update every container with an update available, except exclusions">Update all</button>
       {{end}}
+      <button type="button" id="updatable-filter-btn" class="text-xs px-2.5 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800" title="Show only containers with an update available">Updatable</button>
       <div class="text-sm text-gray-500">{{.Total}} tracked</div>
     </div>
   </div>
@@ -39,7 +40,7 @@
     </div>
     <div class="stack-body rounded-lg border border-gray-800 divide-y divide-gray-800 overflow-hidden">
       {{range .Containers}}
-      <div class="flex items-center gap-4 px-4 py-3 bg-gray-900/40 flex-wrap {{if .Excluded}}opacity-50{{end}}">
+      <div class="flex items-center gap-4 px-4 py-3 bg-gray-900/40 flex-wrap {{if .Excluded}}opacity-50{{end}}" data-container-row data-updatable="{{if .UpdateAvailable}}1{{else}}0{{end}}">
         <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full shrink-0
           {{if eq .StateClass "running"}}bg-state-running/15 text-state-running
           {{else if eq .StateClass "created"}}bg-state-created/15 text-state-created
