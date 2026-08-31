@@ -8,6 +8,17 @@ it reaches `1.0.0`.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-31
+
+### Added
+
+- An "Updatable" toggle next to "Update all" on the Containers page.
+  Clicking it hides, client-side with no reload, any container row
+  without an available update; a stack left with no visible containers
+  as a result collapses too, while stacks that still have matches keep
+  their toggle/dropdown intact. The button flips to "All" while active —
+  clicking it again restores the unfiltered view. Closes #21.
+
 ## [0.4.0] - 2026-08-21
 
 ### Fixed
